@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Roulette Admin</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>관리자</h1>
+    <p class="sub">여기서 돌리면 청취자 화면에 바로 뜹니다</p>
+    <a class="link" href="./index.html">청취자 화면</a>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>1) 로그인</h2>
+      <div class="row">
+        <input id="email" class="inp" type="email" placeholder="이메일" />
+        <input id="pw" class="inp" type="password" placeholder="비밀번호" />
+      </div>
+      <div class="row">
+        <button id="btnLogin" class="btn">로그인</button>
+        <button id="btnLogout" class="btn ghost" disabled>로그아웃</button>
+      </div>
+      <div id="authState" class="muted">로그인 안됨</div>
+    </section>
+
+    <section class="card">
+      <h2>2) 룰렛 돌리기</h2>
+
+      <div class="row">
+        <textarea id="items" class="inp" rows="6"
+          placeholder="항목을 줄바꿈으로 입력 (예:&#10;1|35&#10;2|10&#10;3|5)"></textarea>
+      </div>
+
+      <div class="muted small">
+        형식: <b>항목|가중치</b> (가중치=확률 비율).<br/>
+        예) 1|35, 2|10, 3|5  → 1이 가장 잘 나옴
+      </div>
+
+      <div class="row">
+        <button id="btnSpin" class="btn" disabled>돌리고 저장</button>
+        <button id="btnTestWrite" class="btn ghost" disabled>테스트 저장(한번)</button>
+      </div>
+
+      <div id="resultBox" class="result">결과: -</div>
+      <div id="msg" class="muted"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import {
+      getFirestore, collection, addDoc, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+    import {
+      getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBUMDicEPJ8AtHHe0LRBviIsKbYQJ4U5LA",
+      authDomain: "roulette-log.firebaseapp.com",
+      projectId: "roulette-log",
+      storageBucket: "roulette-log.firebasestorage.app",
+      messagingSenderId: "848295448204",
+      appId: "1:848295448204:web:1b1cd13bf800a8409bf5a9",
+      measurementId: "G-3FBMRDXR74"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    const $ = (id) => document.getElementById(id);
+
+    const emailEl = $("email");
+    const pwEl = $("pw");
+    const btnLogin = $("btnLogin");
+    const btnLogout = $("btnLogout");
+    const authState = $("authState");
+    const btnSpin = $("btnSpin");
+    const btnTestWrite = $("btnTestWrite");
+    const itemsEl = $("items");
+    const resultBox = $("resultBox");
+    const msg = $("msg");
+
+    // ✅ 표시용 이름(원하는대로 바꿔도 됨)
+    const ADMIN_DISPLAY_NAME = "도리";
+
+    // 기본 예시(원하면 바꿔도 됨)
+    itemsEl.value =
+`1|35
+2|10
+3|5
+4|1`;
+
+    function setMsg(t) { msg.textContent = t || ""; }
+
+    function parseItems(text) {
+      const lines = text.split("\n").map(x => x.trim()).filter(Boolean);
+      const items = [];
+      for (const line of lines) {
+        const [name, w] = line.split("|").map(x => x.trim());
+        const weight = Number(w);
+        if (!name) continue;
+        if (!Number.isFinite(weight) || weight <= 0) continue;
+        items.push({ name, weight });
+      }
+      return items;
+    }
+
+    function weightedPick(items) {
+      const sum = items.reduce((a,b)=>a+b.weight, 0);
+      let r = Math.random() * sum;
+      for (const it of items) {
+        r -= it.weight;
+        if (r <= 0) return it.name;
+      }
+      return items[items.length - 1].name;
+    }
+
+    async function writeLog(result, user) {
+      // ✅ Firestore에 저장 (rules가 허용해야 성공)
+      await addDoc(collection(db, "rouletteLogs"), {
+        result,
+        ts: serverTimestamp(),
+        byUid: user?.uid ?? null,
+        byEmail: user?.email ?? null
+      });
+    }
+
+    btnLogin.onclick = async () => {
+      setMsg("");
+      try {
+        await signInWithEmailAndPassword(auth, emailEl.value.trim(), pwEl.value);
+      } catch (e) {
+        setMsg("로그인 실패: " + e.message);
+      }
+    };
+
+    btnLogout.onclick = async () => {
+      setMsg("");
+      try {
+        await signOut(auth);
+      } catch (e) {
+        setMsg("로그아웃 실패: " + e.message);
+      }
+    };
+
+    btnSpin.onclick = async () => {
+      setMsg("");
+      const user = auth.currentUser;
+      if (!user) return setMsg("로그인이 필요해요.");
+
+      const items = parseItems(itemsEl.value);
+      if (items.length === 0) return setMsg("항목|가중치 형식으로 최소 1개 입력해줘요.");
+
+      const result = weightedPick(items);
+      resultBox.textContent = "결과: " + result;
+
+      try {
+        await writeLog(result, user);
+        setMsg("저장 완료! (청취자 화면에 바로 뜸)");
+      } catch (e) {
+        setMsg("저장 실패: " + e.message + " (Rules/UID 확인 필요)");
+      }
+    };
+
+    btnTestWrite.onclick = async () => {
+      setMsg("");
+      const user = auth.currentUser;
+      if (!user) return setMsg("로그인이 필요해요.");
+
+      try {
+        await writeLog("테스트", user);
+        setMsg("테스트 저장 완료! 청취자 화면에서 확인해봐요.");
+      } catch (e) {
+        setMsg("테스트 저장 실패: " + e.message);
+      }
+    };
+
+    onAuthStateChanged(auth, (user) => {
+      const loggedIn = !!user;
+
+      // ✅ 여기서 "성연님" 같은 표시 대신 "도리"로 고정 표시
+      authState.textContent = loggedIn
+        ? `로그인됨: ${ADMIN_DISPLAY_NAME} (uid: ${user.uid})`
+        : "로그인 안됨";
+
+      btnLogout.disabled = !loggedIn;
+      btnSpin.disabled = !loggedIn;
+      btnTestWrite.disabled = !loggedIn;
+    });
+  </script>
+</body>
+</html>
