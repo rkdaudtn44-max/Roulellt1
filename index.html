@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>룰렛 메인</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+  text-align: center;
+  padding: 40px;
+}
+.box {
+  background: white;
+  padding: 20px;
+  margin: 20px auto;
+  width: 320px;
+  border-radius: 10px;
+}
+input, button { margin-top: 6px; }
+button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #4CAF50;
+  color: white;
+  cursor: pointer;
+}
+button:active { transform: translateY(1px); }
+.smalllink{font-size:12px;color:#666;margin-top:10px}
+.smalllink a{color:#3b6ff5;text-decoration:none}
+</style>
+</head>
+<body>
+
+<h1>🎯 룰렛</h1>
+
+닉네임<br>
+<input id="nickname" placeholder="닉네임 입력"><br><br>
+
+<div class="box">
+  <h3>일반룰렛</h3>
+  횟수 <input type="number" id="c1" value="1" min="1"><br>
+  <button onclick="run(1,'일반룰렛')">실행</button>
+</div>
+
+<div class="box">
+  <h3>귀족룰렛</h3>
+  횟수 <input type="number" id="c2" value="1" min="1"><br>
+  <button onclick="run(2,'귀족룰렛')">실행</button>
+</div>
+
+<div class="box">
+  <h3>시간 룰렛</h3>
+  횟수 <input type="number" id="c3" value="1" min="1"><br>
+  <button onclick="run(3,'시간 룰렛')">실행</button>
+</div>
+
+<div class="smalllink">
+  기록 보기: <a href="log.html">log.html 열기</a>
+</div>
+
+<script>
+// =======================
+// 일반룰렛 항목 + 확률
+// =======================
+const normalItems = [
+  { label:"냥멍체[3분]", weight:3.4 },
+  { label:"원하는체[3분_5글자]", weight:3.4 },
+  { label:"짧은애교대사[5줄 이하]", weight:1.7 },
+  { label:"팬보드", weight:1.7 },
+  { label:"혀봉인[1분]", weight:3.4 },
+  { label:"받침봉인[1분]", weight:3.4 },
+  { label:"영 어금지[3분]", weight:3.4 },
+  { label:"침뱉기", weight:3.4 },
+  { label:"짧은팬보드[1~2줄]", weight:3.4 },
+  { label:"실드+100", weight:2.3 },
+  { label:"실드-100", weight:2.3 },
+  { label:"ASMR방송[3분]", weight:1.7 },
+  { label:"룰렛 다돌권", weight:3.4 },
+  { label:"헬기 리액[킵x]", weight:1.7 },
+  { label:"ㅇ받침체[2분]", weight:3.4 },
+  { label:"출석체크 리액[킵x]", weight:3.4 },
+  { label:"브라보[킵x]", weight:3.4 },
+  { label:"3인칭[1분]", weight:3.4 },
+  { label:"방종까지 쉴드 0개[킵x]", weight:1.7 },
+  { label:"발박수", weight:3.4 },
+  { label:"방제 변경권[10분/킵 불가]", weight:1.7 },
+  { label:"배경사진 변경권[10분/킵 불가]", weight:1.7 },
+  { label:"연하충애교도리[1분]", weight:1.7 },
+  { label:"봉인추가", weight:1.7 },
+  { label:"봉인제거", weight:1.7 },
+  { label:"이쑤시개 리액션[킵x]", weight:1.7 },
+  { label:"배통통[킵x]", weight:3.4 },
+  { label:"공지변경권[다음 방송까지]", weight:1.7 },
+  { label:"박수 3번[킵x]", weight:3.4 },
+  { label:"투명의자 1분[킵x]", weight:1.7 },
+  { label:"스쿼트 5개[킵x]", weight:1.7 },
+  { label:"벽찍[킵x]", weight:3.4 },
+  { label:"TMI 1개 올리기", weight:3.4 },
+  { label:"이름 3번 불러주기", weight:1.7 },
+  { label:"꽝", weight:12.1 }
+];
+
+// =======================
+// 귀족룰렛
+// =======================
+const nobleItems = [
+  { label: "24시간 닉변권", weight: 10 },
+  { label: "24시간 역닉변권", weight: 10 },
+  { label: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", weight: 4 },
+  { label: "단독 박제편지", weight: 4 },
+  { label: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", weight: 4 },
+  { label: "캐스트 저장권 2회", weight: 13 },
+  { label: "실드 2배", weight: 5 },
+  { label: "실드펑 2배", weight: 5 },
+  { label: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", weight: 4 },
+  { label: "귀족룰렛 다돌권", weight: 10 },
+  { label: "원하는 이름으로 캐스트 저장권", weight: 5 },
+  { label: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", weight: 4 },
+  { label: "실드 음수로 변경", weight: 4 },
+  { label: "실드 양수로 변경", weight: 4 },
+  { label: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", weight: 4 },
+  { label: "팬보드 3개 추가", weight: 5 },
+  { label: "도리 용돈", weight: 5 }
+];
+
+// =======================
+// 시간 룰렛
+// =======================
+const timeItems = [
+  { label: "방송 연장권 +1분",  weight: 41 },
+  { label: "방송 연장권 +10분", weight: 5  },
+  { label: "방송 연장권 +20분", weight: 3  },
+  { label: "방송 연장권 +30분", weight: 1  },
+  { label: "방송 단축권 -1분",  weight: 41 },
+  { label: "방송 단축권 -10분", weight: 5  },
+  { label: "방송 단축권 -20분", weight: 3  },
+  { label: "방송 단축권 -30분", weight: 1  },
+];
+
+function weightedPick(list){
+  const total = list.reduce((s, x) => s + x.weight, 0);
+  let r = Math.random() * total;
+  for(const x of list){
+    r -= x.weight;
+    if(r <= 0) return x.label;
+  }
+  return list[list.length - 1].label;
+}
+
+function run(type,name){
+  const nick = document.getElementById("nickname").value.trim();
+  if(!nick){ alert("닉네임 입력"); return; }
+
+  const count = Number(document.getElementById("c"+type).value);
+  let data = JSON.parse(localStorage.getItem("rouletteLog")) || {};
+  if(!data[nick]) data[nick] = [];
+
+  const stats = {};
+
+  for(let i=0;i<count;i++){
+    let result;
+    if(type === 1) result = weightedPick(normalItems);
+    else if(type === 2) result = weightedPick(nobleItems);
+    else result = weightedPick(timeItems);
+
+    const key = String(result);
+    stats[key] = (stats[key]||0)+1;
+  }
+
+  data[nick].push({
+    roulette: name,
+    count: count,
+    stats: stats,
+    time: new Date().toLocaleTimeString()
+  });
+
+  localStorage.setItem("rouletteLog", JSON.stringify(data));
+  alert("저장 완료!");
+}
+</script>
+
+</body>
+</html>
