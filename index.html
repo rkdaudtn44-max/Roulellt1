@@ -2,11 +2,34 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Redirect</title>
-  <meta http-equiv="refresh" content="0; url=log.html" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>룰렛</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;margin:0;background:#f6f7fb;color:#111}
+    .wrap{max-width:760px;margin:24px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #eee;border-radius:14px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,.04)}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 14px;border-radius:12px;border:1px solid #e5e7eb;background:#111;color:#fff;text-decoration:none}
+    .btn2{background:#fff;color:#111}
+    h1{font-size:22px;margin:0 0 12px}
+    p{margin:8px 0;color:#444}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .tag{display:inline-block;padding:6px 10px;border-radius:999px;background:#f1f5f9;border:1px solid #e2e8f0;color:#334155;font-size:13px}
+  </style>
 </head>
 <body>
-  이동 중... <a href="log.html">log.html로 이동</a>
+  <div class="wrap">
+    <div class="card">
+      <h1>🎯 룰렛</h1>
+      <p>관리자는 룰렛을 돌릴 수 있고, 모든 사용자는 기록을 볼 수 있어요.</p>
+      <div class="row">
+        <a class="btn" href="./roulette.html">🎯 룰렛 페이지</a>
+        <a class="btn btn2" href="./log.html">📊 기록 페이지</a>
+      </div>
+      <p style="margin-top:14px">
+        <span class="tag">Project: roulette-b5455</span>
+        <span class="tag">Firestore: users / rouletteLogs</span>
+      </p>
+    </div>
+  </div>
 </body>
 </html>
