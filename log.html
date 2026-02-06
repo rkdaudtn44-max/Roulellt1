@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>룰렛 기록 관리</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f0f0f0; padding:30px; }
+.control { background:#fff; padding:15px; border-radius:10px; margin-bottom:16px; }
+.small { color:#666; font-size:12px; margin-top:8px; line-height:1.35; }
+button { font-size:12px; cursor:pointer; }
+.delete-all { background:#e53935; color:white; border:none; padding:8px 12px; border-radius:8px; margin-left:10px; }
+.delete-all:hover { background:#c62828; }
+.list { display:flex; flex-direction:column; gap:10px; }
+.user-card{ background:#fff; border-radius:12px; overflow:hidden; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
+.user-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 14px; cursor:pointer; user-select:none; }
+.user-head:hover{ background:#fafafa; }
+.user-name{ font-weight:700; font-size:15px; }
+.user-meta{ display:flex; align-items:center; gap:10px; color:#666; font-size:12px; }
+.pill{ background:#f0f0f0; border-radius:999px; padding:4px 8px; }
+.chev{ font-size:16px; width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:#f3f3f3; }
+.user-body{ display:none; padding:12px 14px 14px; border-top:1px solid #eee; }
+.user-body.open{ display:block; }
+.roulette-title{ margin-top:12px; font-weight:700; font-size:13px; }
+.grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:8px 12px; margin-top:10px; }
+.cell { background:#e9e9e9; padding:8px 10px; border-radius:8px; font-size:13px; display:flex; justify-content:space-between; align-items:center; gap: 10px; }
+.cell .label { text-align:left; }
+.cell .btns { white-space:nowrap; }
+.cell button { font-size:11px; margin-left:4px; }
+.hr{ height:1px; background:#eee; margin:12px 0; }
+a{color:#3b6ff5;text-decoration:none}
+</style>
+</head>
+<body>
+
+<h1>📊 룰렛 기록 관리</h1>
+
+<div class="control">
+  🔍 <input id="search" placeholder="닉네임 / 룰렛명" style="padding:8px; border-radius:8px; border:1px solid #ddd; width:220px;">
+  <button id="searchBtn" style="padding:8px 10px; border-radius:8px; border:1px solid #ddd; background:#fff;">검색</button>
+
+  <button class="delete-all" id="deleteAllBtn">🚨 전체 삭제 (테스트용)</button>
+
+  <div class="small">
+    - 처음엔 닉네임만 보여요. 닉네임을 누르면 그 사람 기록이 펼쳐집니다.<br>
+    - +/− 버튼으로 카운트 수정 가능(0 이하면 자동 삭제).<br>
+    - 전체 삭제 버튼은 테스트용입니다(최종본에서는 제거).<br>
+    - <a href="index.html">← 룰렛으로 돌아가기</a>
+  </div>
+</div>
+
+<div id="log" class="list"></div>
+
+<script>
+(function(){
+  window.addEventListener("error", () => {
+    const log = document.getElementById("log");
+    if(log){
+      log.innerHTML = "";
+      const card = document.createElement("div");
+      card.className = "user-card";
+      const head = document.createElement("div");
+      head.className = "user-head";
+      head.innerHTML = "<b>❗ 오류가 발생했습니다</b>";
+      const body = document.createElement("div");
+      body.className = "user-body open";
+      body.innerHTML = "콘솔의 빨간 에러 메시지를 캡처해서 보내주면 바로 고쳐줄게.";
+      card.appendChild(head);
+      card.appendChild(body);
+      log.appendChild(card);
+    }
+  });
+
+  function getData(){
+    try { return JSON.parse(localStorage.getItem("rouletteLog")) || {}; }
+    catch { return {}; }
+  }
+  function saveData(d){ localStorage.setItem("rouletteLog", JSON.stringify(d)); }
+
+  function deleteAll(){
+    if(!confirm("⚠️ 정말로 모든 기록을 삭제할까요?\n(되돌릴 수 없습니다)")) return;
+    localStorage.removeItem("rouletteLog");
+    alert("모든 기록이 삭제되었습니다.");
+    render();
+  }
+
+  const normalOrder = [
+    "냥멍체[3분]","원하는체[3분_5글자]","짧은애교대사[5줄 이하]","팬보드",
+    "혀봉인[1분]","받침봉인[1분]","영 어금지[3분]","침뱉기",
+    "짧은팬보드[1~2줄]","실드+100","실드-100","ASMR방송[3분]",
+    "룰렛 다돌권","헬기 리액[킵x]","ㅇ받침체[2분]","출석체크 리액[킵x]",
+    "브라보[킵x]","3인칭[1분]","방종까지 쉴드 0개[킵x]","발박수",
+    "방제 변경권[10분/킵 불가]","배경사진 변경권[10분/킵 불가]",
+    "연하충애교도리[1분]","봉인추가","봉인제거",
+    "이쑤시개 리액션[킵x]","배통통[킵x]",
+    "공지변경권[다음 방송까지]","박수 3번[킵x]",
+    "투명의자 1분[킵x]","스쿼트 5개[킵x]",
+    "벽찍[킵x]","TMI 1개 올리기","이름 3번 불러주기","꽝"
+  ];
+
+  const nobleOrder = [
+    "24시간 닉변권","24시간 역닉변권",
+    "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]",
+    "단독 박제편지",
+    "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]",
+    "캐스트 저장권 2회","실드 2배","실드펑 2배",
+    "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)",
+    "귀족룰렛 다돌권",
+    "원하는 이름으로 캐스트 저장권",
+    "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]",
+    "실드 음수로 변경","실드 양수로 변경",
+    "게임 데이트권[1시간/마이크 사용은 상대방에 따라]",
+    "팬보드 3개 추가","도리 용돈"
+  ];
+
+  const timeOrder = [
+    "방송 연장권 +1분","방송 연장권 +10분","방송 연장권 +20분","방송 연장권 +30분",
+    "방송 단축권 -1분","방송 단축권 -10분","방송 단축권 -20분","방송 단축권 -30분"
+  ];
+
+  function sortKeys(keys){
+    return keys.slice().sort((a,b)=>{
+      const iaT = timeOrder.indexOf(a), ibT = timeOrder.indexOf(b);
+      const iaG = nobleOrder.indexOf(a), ibG = nobleOrder.indexOf(b);
+      const iaN = normalOrder.indexOf(a), ibN = normalOrder.indexOf(b);
+
+      const aIsTime = iaT !== -1, bIsTime = ibT !== -1;
+      const aIsNoble = iaG !== -1, bIsNoble = ibG !== -1;
+      const aIsNormal = iaN !== -1, bIsNormal = ibN !== -1;
+
+      if(aIsTime && bIsTime) return iaT - ibT;
+      if(aIsTime) return -1;
+      if(bIsTime) return 1;
+
+      if(aIsNoble && bIsNoble) return iaG - ibG;
+      if(aIsNoble) return -1;
+      if(bIsNoble) return 1;
+
+      if(aIsNormal && bIsNormal) return iaN - ibN;
+      if(aIsNormal) return -1;
+      if(bIsNormal) return 1;
+
+      const na = Number(a), nb = Number(b);
+      const aNum = Number.isFinite(na) && String(na) === a;
+      const bNum = Number.isFinite(nb) && String(nb) === b;
+      if(aNum && bNum) return na - nb;
+
+      return String(a).localeCompare(String(b));
+    });
+  }
+
+  function changeCount(user, rIndex, key, delta){
+    const data = getData();
+    if(!data[user] || !data[user][rIndex]) return;
+
+    const stats = data[user][rIndex].stats || {};
+    const k = String(key);
+
+    stats[k] = (stats[k] || 0) + delta;
+    if(stats[k] <= 0) delete stats[k];
+
+    data[user][rIndex].stats = stats;
+    saveData(data);
+    render(user);
+  }
+
+  function sumRuns(entries){
+    return entries.reduce((s, r) => s + (Number(r.count)||0), 0);
+  }
+
+  function buildUserCard(user, entries, keyword, openUser){
+    const card = document.createElement("div");
+    card.className = "user-card";
+
+    const head = document.createElement("div");
+    head.className = "user-head";
+
+    const left = document.createElement("div");
+    left.className = "user-name";
+    left.textContent = user;
+
+    const right = document.createElement("div");
+    right.className = "user-meta";
+
+    const totalEntries = entries.length;
+    const totalRuns = sumRuns(entries);
+
+    const p1 = document.createElement("span");
+    p1.className = "pill";
+    p1.textContent = `기록 ${totalEntries}개`;
+
+    const p2 = document.createElement("span");
+    p2.className = "pill";
+    p2.textContent = `총 ${totalRuns}회`;
+
+    const chev = document.createElement("span");
+    chev.className = "chev";
+    chev.textContent = "▾";
+
+    right.appendChild(p1);
+    right.appendChild(p2);
+    right.appendChild(chev);
+
+    head.appendChild(left);
+    head.appendChild(right);
+
+    const body = document.createElement("div");
+    body.className = "user-body";
+
+    const shouldOpen = (openUser && openUser === user);
+    if(shouldOpen){
+      body.classList.add("open");
+      chev.textContent = "▴";
+    }
+
+    head.addEventListener("click", () => {
+      const isOpen = body.classList.contains("open");
+      document.querySelectorAll(".user-body.open").forEach(el => { if(el !== body) el.classList.remove("open"); });
+      document.querySelectorAll(".chev").forEach(c => { if(c !== chev) c.textContent = "▾"; });
+
+      if(isOpen){
+        body.classList.remove("open");
+        chev.textContent = "▾";
+      } else {
+        body.classList.add("open");
+        chev.textContent = "▴";
+      }
+    });
+
+    entries.forEach((r, rIndex) => {
+      const rouletteName = r.roulette || "(이름없음)";
+      if(keyword && !user.includes(keyword) && !rouletteName.includes(keyword)) return;
+
+      const title = document.createElement("div");
+      title.className = "roulette-title";
+      title.textContent = `▶ ${rouletteName} (${r.count}회)`;
+      body.appendChild(title);
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+
+      const stats = r.stats || {};
+      const keys = sortKeys(Object.keys(stats));
+
+      if(keys.length === 0){
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = "표시할 항목이 없습니다.";
+        grid.appendChild(cell);
+      } else {
+        keys.forEach((k) => {
+          const v = stats[k];
+
+          const cell = document.createElement("div");
+          cell.className = "cell";
+
+          const label = document.createElement("span");
+          label.className = "label";
+          label.textContent = `${k} : ${v}회`;
+
+          const btnBox = document.createElement("span");
+          btnBox.className = "btns";
+
+          const plus = document.createElement("button");
+          plus.textContent = "＋";
+          plus.onclick = (e) => { e.stopPropagation(); changeCount(user, rIndex, k, 1); };
+
+          const minus = document.createElement("button");
+          minus.textContent = "－";
+          minus.onclick = (e) => { e.stopPropagation(); changeCount(user, rIndex, k, -1); };
+
+          btnBox.appendChild(plus);
+          btnBox.appendChild(minus);
+
+          cell.appendChild(label);
+          cell.appendChild(btnBox);
+          grid.appendChild(cell);
+        });
+      }
+
+      body.appendChild(grid);
+      const hr = document.createElement("div");
+      hr.className = "hr";
+      body.appendChild(hr);
+    });
+
+    card.appendChild(head);
+    card.appendChild(body);
+    return card;
+  }
+
+  function render(openUser){
+    const keyword = (document.getElementById("search").value || "").trim();
+    const data = getData();
+    const log = document.getElementById("log");
+    log.innerHTML = "";
+
+    const users = Object.keys(data);
+
+    if(users.length === 0){
+      const card = document.createElement("div");
+      card.className = "user-card";
+      const head = document.createElement("div");
+      head.className = "user-head";
+      head.innerHTML = "<b>저장된 기록이 없습니다.</b>";
+      card.appendChild(head);
+      log.appendChild(card);
+      return;
+    }
+
+    const filteredUsers = users.filter((user) => {
+      const entries = data[user] || [];
+      if(!keyword) return true;
+      if(user.includes(keyword)) return true;
+      return entries.some(r => (r.roulette || "").includes(keyword));
+    });
+
+    if(filteredUsers.length === 0){
+      const card = document.createElement("div");
+      card.className = "user-card";
+      const head = document.createElement("div");
+      head.className = "user-head";
+      head.innerHTML = "<b>검색 결과가 없습니다.</b>";
+      card.appendChild(head);
+      log.appendChild(card);
+      return;
+    }
+
+    filteredUsers.sort((a,b)=> a.localeCompare(b, "ko"));
+
+    filteredUsers.forEach((user) => {
+      const entries = data[user] || [];
+      const card = buildUserCard(user, entries, keyword, openUser);
+      log.appendChild(card);
+    });
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", () => render());
+  document.getElementById("deleteAllBtn").addEventListener("click", deleteAll);
+  document.getElementById("search").addEventListener("keydown", (e) => { if(e.key === "Enter") render(); });
+
+  render();
+})();
+</script>
+
+</body>
+</html>
