@@ -1,24 +1,115 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>룰렛 기록</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>룰렛 로그</title>
+
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--text:#111;--muted:#666;--line:#e8e8e8;--main:#111;}
+  body{margin:0;font-family:system-ui,-apple-system,Arial;background:var(--bg);color:var(--text);}
+  header{position:sticky;top:0;z-index:5;background:rgba(244,245,247,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
+  .topbar{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;}
+  .title{font-size:20px;font-weight:900}
+  .right{display:flex;align-items:center;gap:10px;}
+  .badge{font-size:12px;padding:6px 10px;border-radius:999px;background:#fff;border:1px solid var(--line);}
+  .btn{border:none;cursor:pointer;padding:10px 12px;border-radius:12px;background:var(--main);color:#fff;font-weight:900;font-size:13px;}
+  .btn.secondary{background:#fff;color:#111;border:1px solid var(--line);}
+  .btn.danger{background:#e53935;}
+  .btn:active{transform:translateY(1px);}
+  main{max-width:980px;margin:0 auto;padding:16px;}
+  .loginBar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--line);padding:12px;border-radius:16px;}
+  .loginLeft{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  input{padding:11px 12px;border-radius:12px;border:1px solid var(--line);font-size:14px;}
+  .hint{font-size:12px;color:var(--muted);line-height:1.4;margin:10px 2px 0;}
+  #log{margin-top:12px;display:flex;flex-direction:column;gap:10px;}
+  .row{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .row .left{display:flex;flex-direction:column;gap:5px;}
+  .row b{font-size:14px;}
+  .meta{font-size:12px;color:var(--muted);}
+  .ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  a{color:#2f6fed;text-decoration:none;font-weight:900;}
+
+  /* 회원가입 모달 */
+  .modalBack{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:10;padding:18px;}
+  .modal{width:min(420px,100%);background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.18);overflow:hidden;}
+  .modalHead{display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid var(--line);font-weight:900;}
+  .xbtn{border:none;background:#f2f2f2;border-radius:10px;width:36px;height:36px;cursor:pointer;font-size:18px;}
+  .modalBody{padding:14px;display:flex;flex-direction:column;gap:10px;}
+  .modalFoot{padding:14px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;}
+  .hidden{display:none;}
+</style>
+</head>
+
+<body>
+<header>
+  <div class="topbar">
+    <div class="title">📊 룰렛 로그</div>
+    <div class="right">
+      <span id="nickBadge" class="badge" style="display:none;"></span>
+      <button id="wipeAllBtn" class="btn danger" style="display:none;">전체삭제</button>
+      <button id="logoutBtn" class="btn secondary" style="display:none;">로그아웃</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="loginBar" class="loginBar">
+    <div class="loginLeft">
+      <input id="email" placeholder="이메일" autocomplete="email" />
+      <input id="pw" type="password" placeholder="비밀번호(6자+)" autocomplete="current-password" />
+      <button class="btn" id="loginBtn">로그인</button>
+      <button class="btn secondary" id="openSignupBtn">회원가입</button>
+    </div>
+    <div class="meta" id="status">미로그인</div>
+  </div>
+
+  <div class="hint">
+    - 로그인하면 가운데에 기록이 보여.<br>
+    - <b>관리자만</b> + / − / 삭제 / 전체삭제가 보이고 작동해.<br>
+    - <a href="index.html">← 룰렛 페이지</a>
+  </div>
+
+  <div id="log"></div>
+</main>
+
+<!-- 회원가입 모달 -->
+<div id="signupBack" class="modalBack">
+  <div class="modal">
+    <div class="modalHead">
+      <span>회원가입(닉네임 포함)</span>
+      <button class="xbtn" id="closeSignupBtn">×</button>
+    </div>
+    <div class="modalBody">
+      <input id="suNick" placeholder="닉네임(최대 20자)" maxlength="20" />
+      <input id="suEmail" placeholder="이메일" autocomplete="email" />
+      <input id="suPw" type="password" placeholder="비밀번호(6자+)" autocomplete="new-password" />
+      <div class="meta">* 가입 후 우측상단에 닉네임이 표시돼.</div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn secondary" id="cancelSignupBtn">취소</button>
+      <button class="btn" id="doSignupBtn">가입하기</button>
+    </div>
+  </div>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword,
-  onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { 
-  getFirestore, 
-  collection, 
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
   getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
   deleteDoc,
-  doc
+  query,
+  orderBy,
+  increment,
+  writeBatch,
+  limit
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -34,79 +125,209 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-window.signup = async function(){
-  const email = document.getElementById("email").value;
-  const pw = document.getElementById("pw").value;
-  await createUserWithEmailAndPassword(auth, email, pw);
-  alert("회원가입 완료!");
-};
+const $ = (id)=>document.getElementById(id);
 
-window.login = async function(){
-  const email = document.getElementById("email").value;
-  const pw = document.getElementById("pw").value;
-  await signInWithEmailAndPassword(auth, email, pw);
-  alert("로그인 성공!");
-};
+let currentUser = null;
+let isAdmin = false;
+
+function openSignup(){ $("signupBack").style.display="flex"; }
+function closeSignup(){ $("signupBack").style.display="none"; }
+
+$("openSignupBtn").addEventListener("click", openSignup);
+$("closeSignupBtn").addEventListener("click", closeSignup);
+$("cancelSignupBtn").addEventListener("click", closeSignup);
+$("signupBack").addEventListener("click",(e)=>{ if(e.target===$("signupBack")) closeSignup(); });
+
+async function checkAdmin(uid){
+  const s = await getDoc(doc(db,"admins",uid));
+  return s.exists();
+}
+
+function showLoggedOut(){
+  $("status").textContent = "미로그인";
+  $("loginBar").style.display = "flex";
+  $("logoutBtn").style.display = "none";
+  $("nickBadge").style.display = "none";
+  $("wipeAllBtn").style.display = "none";
+  $("log").innerHTML = `<div class="row"><div class="left"><b>로그인이 필요해</b><div class="meta">로그인하면 기록이 보여.</div></div></div>`;
+}
+
+function showLoggedIn(nickname){
+  $("status").textContent = "로그인됨";
+  $("loginBar").style.display = "none";
+  $("logoutBtn").style.display = "inline-block";
+  $("nickBadge").style.display = "inline-block";
+  $("nickBadge").textContent = nickname ? `닉네임: ${nickname}${isAdmin ? " (관리자)" : ""}` : `UID: ${currentUser.uid.slice(0,8)}…${isAdmin ? " (관리자)" : ""}`;
+  $("wipeAllBtn").style.display = isAdmin ? "inline-block" : "none";
+}
+
+$("doSignupBtn").addEventListener("click", async ()=>{
+  const nickname = $("suNick").value.trim();
+  const email = $("suEmail").value.trim();
+  const pw = $("suPw").value;
+
+  if(!nickname){ alert("닉네임을 입력해줘"); return; }
+  if(!email){ alert("이메일을 입력해줘"); return; }
+  if(!pw || pw.length < 6){ alert("비밀번호는 6자 이상이야"); return; }
+
+  try{
+    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    await setDoc(doc(db,"users", cred.user.uid), { nickname, email, createdAt: new Date().toISOString() });
+    alert("회원가입 완료! (로그인됨)");
+    closeSignup();
+  }catch(e){
+    alert("회원가입 실패: " + (e.code || e.message));
+  }
+});
+
+$("loginBtn").addEventListener("click", async ()=>{
+  const email = $("email").value.trim();
+  const pw = $("pw").value;
+  try{
+    await signInWithEmailAndPassword(auth, email, pw);
+  }catch(e){
+    alert("로그인 실패: " + (e.code || e.message));
+  }
+});
+
+$("logoutBtn").addEventListener("click", async ()=>{ await signOut(auth); });
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+}
 
 async function loadLogs(){
-  const snap = await getDocs(collection(db, "logs"));
-  const list = document.getElementById("log");
-  list.innerHTML = "";
+  if(!currentUser) return;
 
-  snap.forEach(docSnap => {
+  $("log").innerHTML = "";
+
+  // 최근 200개만 (많아지면 성능 때문)
+  let snap;
+  try{
+    snap = await getDocs(query(collection(db,"logs"), orderBy("createdAt","desc"), limit(200)));
+  }catch{
+    snap = await getDocs(collection(db,"logs"));
+  }
+
+  if(snap.empty){
+    $("log").innerHTML = `<div class="row"><div class="left"><b>기록이 아직 없어</b><div class="meta">룰렛을 돌리면 여기에 쌓여.</div></div></div>`;
+    return;
+  }
+
+  snap.forEach((docSnap)=>{
     const d = docSnap.data();
-    const div = document.createElement("div");
-    div.innerHTML = `
-      <b>${d.nickname}</b> - ${d.roulette} (${d.count}회)
-      <button onclick="removeLog('${docSnap.id}')">삭제(관리자만)</button>
+    const nick = d.nickname || "(닉네임없음)";
+    const roulette = d.roulette || "(룰렛)";
+    const count = Number(d.count || 0);
+
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const adminButtons = isAdmin ? `
+      <div class="ctrl">
+        <button class="btn secondary" data-minus="${docSnap.id}">-</button>
+        <button class="btn secondary" data-plus="${docSnap.id}">+</button>
+        <button class="btn danger" data-del="${docSnap.id}">삭제</button>
+      </div>
+    ` : `<div class="meta">읽기 전용</div>`;
+
+    row.innerHTML = `
+      <div class="left">
+        <b>${escapeHtml(nick)} · ${escapeHtml(roulette)} (${count}회)</b>
+        <div class="meta">id: ${docSnap.id}</div>
+      </div>
+      ${adminButtons}
     `;
-    list.appendChild(div);
+
+    if(isAdmin){
+      row.querySelector(`[data-plus="${docSnap.id}"]`)?.addEventListener("click", async ()=>{
+        try{
+          await updateDoc(doc(db,"logs",docSnap.id), { count: increment(1) });
+          loadLogs();
+        }catch(e){
+          alert("수정 실패(관리자 권한 필요): " + (e.code || e.message));
+        }
+      });
+
+      row.querySelector(`[data-minus="${docSnap.id}"]`)?.addEventListener("click", async ()=>{
+        try{
+          const ref = doc(db,"logs",docSnap.id);
+          // - 눌러서 0 이하가 되면 삭제
+          const cur = Number(d.count || 0);
+          if(cur <= 1){
+            await deleteDoc(ref);
+          }else{
+            await updateDoc(ref, { count: increment(-1) });
+          }
+          loadLogs();
+        }catch(e){
+          alert("수정 실패(관리자 권한 필요): " + (e.code || e.message));
+        }
+      });
+
+      row.querySelector(`[data-del="${docSnap.id}"]`)?.addEventListener("click", async ()=>{
+        if(!confirm("이 기록을 삭제할까?")) return;
+        try{
+          await deleteDoc(doc(db,"logs",docSnap.id));
+          loadLogs();
+        }catch(e){
+          alert("삭제 실패(관리자 권한 필요): " + (e.code || e.message));
+        }
+      });
+    }
+
+    $("log").appendChild(row);
   });
 }
 
-window.removeLog = async function(id){
-  const user = auth.currentUser;
-  if(!user){ alert("로그인 필요"); return; }
+$("wipeAllBtn").addEventListener("click", async ()=>{
+  if(!isAdmin){ return; }
+  if(!confirm("⚠️ 전체 삭제할까? (되돌릴 수 없음)")) return;
 
-  // Firestore Rules에서 관리자만 허용됨
-  try {
-    await deleteDoc(doc(db, "logs", id));
-    alert("삭제 완료");
-    loadLogs();
-  } catch(e){
-    alert("권한 없음(관리자 아님)");
-  }
-};
+  try{
+    const snap = await getDocs(collection(db,"logs"));
 
-onAuthStateChanged(auth, (user)=>{
-  if(user){
-    document.getElementById("status").innerText = "로그인됨: " + user.email;
+    // 배치 제한(500) 때문에 안전하게 400개까지만
+    const docs = [];
+    snap.forEach(d=>docs.push(d));
+    if(docs.length > 400){
+      alert("기록이 너무 많아서 한 번에 400개까지만 삭제해. (여러 번 눌러주면 됨)");
+    }
+
+    const batch = writeBatch(db);
+    docs.slice(0,400).forEach(d=>{
+      batch.delete(doc(db,"logs", d.id));
+    });
+    await batch.commit();
+    alert("전체삭제 완료");
     loadLogs();
-  } else {
-    document.getElementById("status").innerText = "미로그인";
+  }catch(e){
+    alert("전체삭제 실패(관리자 권한 필요): " + (e.code || e.message));
   }
+});
+
+onAuthStateChanged(auth, async (user)=>{
+  currentUser = user || null;
+
+  if(!user){
+    isAdmin = false;
+    showLoggedOut();
+    return;
+  }
+
+  isAdmin = await checkAdmin(user.uid);
+
+  // 닉네임 불러오기
+  let nickname = "";
+  try{
+    const u = await getDoc(doc(db,"users", user.uid));
+    nickname = u.exists() ? (u.data().nickname || "") : "";
+  }catch{}
+
+  showLoggedIn(nickname);
+  loadLogs();
 });
 </script>
 
-<style>
-body{ font-family:Arial; background:#f0f0f0; padding:30px; }
-.box{ background:white; padding:15px; border-radius:10px; margin-bottom:10px; }
-</style>
-</head>
-
-<body>
-<h1>📊 룰렛 로그</h1>
-
-<div class="box">
-  <div id="status">미로그인</div>
-  이메일 <input id="email"><br>
-  비밀번호 <input id="pw" type="password"><br>
-  <button onclick="signup()">회원가입</button>
-  <button onclick="login()">로그인</button>
-</div>
-
-<div id="log"></div>
-
-<p><a href="index.html">← 룰렛으로 돌아가기</a></p>
 </body>
 </html>
