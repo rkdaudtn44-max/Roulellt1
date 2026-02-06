@@ -1,129 +1,113 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>룰렛(관리자 전용)</title>
-<style>
-  body{margin:0;font-family:system-ui,-apple-system,Arial;background:#f5f6f8;padding:18px;}
-  .wrap{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
-  .card{background:#fff;border:1px solid #e8e8e8;border-radius:16px;padding:14px;}
-  h1{margin:0;font-size:20px;}
-  .muted{color:#666;font-size:12px;line-height:1.4;margin-top:6px;}
-  input{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:12px;font-size:14px;}
-  .btn{width:100%;padding:11px 12px;border:none;border-radius:12px;background:#111;color:#fff;font-weight:900;cursor:pointer;margin-top:10px;}
-  .btn.secondary{background:#fff;color:#111;border:1px solid #e8e8e8;}
-  a{color:#2f6fed;text-decoration:none;font-weight:900;}
-  .hidden{display:none;}
-</style>
-
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  // =========================
+  // 0) Firebase SDK import
+  // =========================
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-  authDomain: "roulette-b5455.firebaseapp.com",
-  projectId: "roulette-b5455",
-  storageBucket: "roulette-b5455.firebasestorage.app",
-  messagingSenderId: "728191308035",
-  appId: "1:728191308035:web:b14b46c38bbe0261969936"
-};
+  // =========================
+  // 1) firebaseConfig (너가 쓰는 걸 그대로 유지!)
+  // =========================
+  const firebaseConfig = {
+    apiKey: "너의키",
+    authDomain: "너의도메인",
+    projectId: "roulette-b5455", // <- 지금 콘솔에서 본 Project ID와 같아야 함
+    storageBucket: "너의버킷",
+    messagingSenderId: "너의ID",
+    appId: "너의앱ID",
+  };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-const $ = (id)=>document.getElementById(id);
+  // =========================
+  // 2) (필수) 관리자 체크 함수  ★이게 핵심★
+  // =========================
+  async function checkAdmin(uid) {
+    // users/{UID} 문서에서 role == "admin" 확인
+    const ref = doc(db, "users", uid);
+    const snap = await getDoc(ref);
 
-async function checkAdmin(uid){
-  const s = await getDoc(doc(db,"admins",uid));
-  return s.exists();
-}
+    if (!snap.exists()) return false;
 
-async function saveLog(rouletteName){
-  const user = auth.currentUser;
-  if(!user){ alert("로그인이 필요해요."); location.href="log.html"; return; }
+    const data = snap.data() || {};
+    const role = (data.role || "").toString().trim().toLowerCase();
+    return role === "admin";
+  }
 
-  const nickname = $("nickname").value.trim();
-  if(!nickname){ alert("닉네임을 입력해줘"); return; }
+  // =========================
+  // 3) (필수) 로그인 상태 변화 시 관리자 여부 반영
+  // =========================
+  // 아래 id들은 너 페이지에 맞게 연결해줘:
+  // - adminOnlyBox: "관리자만 룰렛 가능" 안내 박스(있으면)
+  // - rouletteBox: 실제 룰렛 UI 전체 컨테이너(있으면)
+  // - debugBox: 상태 표시(없으면 무시됨)
+  const adminOnlyBox = document.getElementById("adminOnlyBox");
+  const rouletteBox = document.getElementById("rouletteBox");
+  const debugBox = document.getElementById("debugBox");
 
-  const count = Math.max(1, Number($("count").value || 1));
+  function setVisible(el, on) {
+    if (!el) return;
+    el.style.display = on ? "" : "none";
+  }
 
-  // 🔒 실제로는 Rules에서 관리자만 write 가능
-  try{
-    await addDoc(collection(db,"logs"), {
-      uid: user.uid,
-      nickname,
-      roulette: rouletteName,
-      count,
-      createdAt: serverTimestamp()
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      // 미로그인
+      setVisible(adminOnlyBox, true);
+      setVisible(rouletteBox, false);
+      if (debugBox) debugBox.textContent = "상태: 미로그인";
+      return;
+    }
+
+    // 로그인 됨 → 관리자 검사
+    let isAdmin = false;
+    try {
+      isAdmin = await checkAdmin(user.uid);
+    } catch (e) {
+      console.error("admin check error:", e);
+    }
+
+    if (debugBox) {
+      debugBox.textContent = `상태: 로그인됨 / UID=${user.uid} / admin=${isAdmin}`;
+    }
+
+    // 관리자면 룰렛 보여주기
+    setVisible(adminOnlyBox, !isAdmin);
+    setVisible(rouletteBox, isAdmin);
+  });
+
+  // =========================
+  // 4) (선택) 로그인/로그아웃 버튼이 있으면 연결
+  // =========================
+  const emailEl = document.getElementById("email");
+  const passEl = document.getElementById("password");
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const errorBox = document.getElementById("errorBox");
+
+  if (loginBtn) {
+    loginBtn.addEventListener("click", async () => {
+      if (errorBox) errorBox.textContent = "";
+      try {
+        await signInWithEmailAndPassword(auth, emailEl.value.trim(), passEl.value);
+      } catch (e) {
+        console.error(e);
+        if (errorBox) errorBox.textContent = "로그인 실패: " + (e?.code || e?.message);
+      }
     });
-    alert("저장 완료!");
-  }catch(e){
-    alert("저장 실패(관리자 권한 필요): " + (e.code || e.message));
   }
-}
 
-window.spinBasic = ()=>saveLog("일반룰렛");
-window.spinNoble = ()=>saveLog("귀족룰렛");
-window.spinTime  = ()=>saveLog("시간룰렛");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+    });
+  }
 
-onAuthStateChanged(auth, async (user)=>{
-  if(!user){
-    $("notLogin").classList.remove("hidden");
-    $("notAdmin").classList.add("hidden");
-    $("adminOnly").classList.add("hidden");
-    return;
-  }
-  const ok = await checkAdmin(user.uid);
-  if(!ok){
-    $("notLogin").classList.add("hidden");
-    $("notAdmin").classList.remove("hidden");
-    $("adminOnly").classList.add("hidden");
-    return;
-  }
-  $("notLogin").classList.add("hidden");
-  $("notAdmin").classList.add("hidden");
-  $("adminOnly").classList.remove("hidden");
-});
+  // =========================
+  // 여기 아래부터는 '원래 너 룰렛 로직' 그대로 두면 됨
+  // (룰렛 돌리기 함수/저장 등)
+  // =========================
 </script>
-</head>
-<body>
-
-<div class="wrap">
-  <div class="card">
-    <h1>🎯 룰렛</h1>
-    <div class="muted">관리자만 룰렛을 돌릴 수 있어요.</div>
-    <div class="muted" style="margin-top:8px;"><a href="log.html">📊 기록 사이트로 이동</a></div>
-  </div>
-
-  <div id="notLogin" class="card hidden">
-    <b>로그인이 필요해요.</b>
-    <div class="muted">로그 사이트에서 로그인 후 다시 와줘.</div>
-    <button class="btn" onclick="location.href='log.html'">로그 사이트로 가기</button>
-  </div>
-
-  <div id="notAdmin" class="card hidden">
-    <b>관리자 전용 페이지야.</b>
-    <div class="muted">일반 유저는 기록 사이트만 이용할 수 있어.</div>
-    <button class="btn" onclick="location.href='log.html'">기록 사이트로 가기</button>
-  </div>
-
-  <div id="adminOnly" class="card hidden">
-    <b>관리자 룰렛 실행</b>
-    <div class="muted">닉네임/횟수 입력 후 원하는 룰렛 버튼을 눌러 저장해.</div>
-    <div style="margin-top:10px;">닉네임</div>
-    <input id="nickname" placeholder="닉네임 입력" />
-    <div style="margin-top:10px;">횟수</div>
-    <input id="count" type="number" min="1" value="1" />
-
-    <button class="btn" onclick="spinBasic()">일반룰렛 저장</button>
-    <button class="btn" onclick="spinNoble()">귀족룰렛 저장</button>
-    <button class="btn" onclick="spinTime()">시간룰렛 저장</button>
-  </div>
-</div>
-
-</body>
-</html>
