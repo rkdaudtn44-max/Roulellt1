@@ -4,271 +4,110 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>룰렛 로그</title>
-
 <style>
-:root{--bg:#f4f5f7;--card:#fff;--text:#111;--muted:#666;--line:#e8e8e8;--main:#111;--danger:#e53935;}
-body{margin:0;font-family:system-ui,-apple-system,Arial;background:var(--bg);}
-
-header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);}
-.topbar{max-width:980px;margin:0 auto;display:flex;justify-content:space-between;padding:12px 16px;}
-
-.nick{
-  display:none;
-  background:#fff;
-  border:1px solid var(--line);
-  padding:6px 10px;
-  border-radius:999px;
-  font-size:12px;
-}
-
-.btn{
-  border:none;
-  cursor:pointer;
-  padding:10px 12px;
-  border-radius:12px;
-  background:var(--main);
-  color:#fff;
-  font-weight:900;
-}
-.btn.secondary{background:#fff;color:#111;border:1px solid var(--line);}
-.btn.danger{background:var(--danger);}
-
-main{max-width:980px;margin:0 auto;padding:16px;}
-.card{background:white;border:1px solid var(--line);border-radius:16px;padding:12px;}
-.hidden{display:none !important;}
-
-.row{
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:10px;
-  margin-bottom:8px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-}
-.ctrl button{margin-left:6px;}
-
-.modalBack{
-  position:fixed;inset:0;
-  background:rgba(0,0,0,.35);
-  display:none;
-  align-items:center;
-  justify-content:center;
-}
-.modal{
-  background:white;
-  padding:16px;
-  border-radius:16px;
-  width:320px;
-}
+  body{margin:0;font-family:system-ui;background:#f4f5f7;}
+  header{background:#fff;border-bottom:1px solid #ddd;padding:12px 16px;font-weight:900;}
+  main{max-width:900px;margin:0 auto;padding:16px;}
+  .box{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:12px;margin-bottom:12px;}
+  input{width:100%;box-sizing:border-box;margin:6px 0;padding:12px;border-radius:12px;border:1px solid #ddd;font-size:16px;}
+  button{padding:12px 14px;border-radius:12px;border:none;background:#111;color:#fff;font-weight:900;margin-right:8px;}
+  .secondary{background:#fff;color:#111;border:1px solid #ddd;}
+  #err{display:none;white-space:pre-wrap;background:#fff5f5;border:1px solid #ffc9c9;color:#b00020;}
+  #ok{display:none;white-space:pre-wrap;background:#f6fff7;border:1px solid #c9ffd1;color:#0a6b1e;}
 </style>
 </head>
-
 <body>
-
-<header>
-  <div class="topbar">
-    <b>📊 룰렛 로그</b>
-    <div>
-      <span id="nickBadge" class="nick"></span>
-      <button id="logoutBtn" class="btn secondary" style="display:none;">로그아웃</button>
-      <button id="wipeAllBtn" class="btn danger" style="display:none;">전체삭제</button>
-    </div>
-  </div>
-</header>
-
+<header>📊 룰렛 로그 (응급 디버그)</header>
 <main>
+  <div id="err" class="box"></div>
+  <div id="ok" class="box"></div>
 
-<!-- 로그인 박스 -->
-<div id="authBox" class="card">
-  <input id="email" placeholder="이메일">
-  <input id="pw" type="password" placeholder="비밀번호">
-  <button id="loginBtn" class="btn">로그인</button>
-  <button id="openSignupBtn" class="btn secondary">회원가입</button>
-  <div id="status" style="margin-top:8px;font-size:12px;color:#666;">미로그인</div>
-</div>
+  <div id="authBox" class="box">
+    <div style="font-weight:900;margin-bottom:8px;">로그인</div>
+    <input id="email" placeholder="이메일">
+    <input id="pw" type="password" placeholder="비밀번호">
+    <button id="loginBtn">로그인</button>
+    <button id="logoutBtn" class="secondary" style="display:none;">로그아웃</button>
+  </div>
 
-<div id="logList"></div>
-
+  <div id="info" class="box">상태: 미로그인</div>
 </main>
 
-<!-- 회원가입 모달 -->
-<div id="signupBack" class="modalBack">
-  <div class="modal">
-    <h3>회원가입</h3>
-    <input id="suNick" placeholder="닉네임">
-    <input id="suEmail" placeholder="이메일">
-    <input id="suPw" type="password" placeholder="비밀번호">
-    <button id="doSignupBtn" class="btn">가입</button>
-    <button id="closeSignupBtn" class="btn secondary">닫기</button>
-  </div>
-</div>
-
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { 
-  getAuth, createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, signOut, onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { 
-  getFirestore, collection, doc, setDoc, getDoc,
-  getDocs, deleteDoc, updateDoc, increment
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  const err = document.getElementById("err");
+  const ok = document.getElementById("ok");
+  const info = document.getElementById("info");
+  const authBox = document.getElementById("authBox");
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-  authDomain: "roulette-b5455.firebaseapp.com",
-  projectId: "roulette-b5455",
-  storageBucket: "roulette-b5455.firebasestorage.app",
-  messagingSenderId: "728191308035",
-  appId: "1:728191308035:web:b14b46c38bbe0261969936"
-};
+  function showErr(msg){ err.style.display="block"; err.textContent=String(msg); }
+  function showOk(msg){ ok.style.display="block"; ok.textContent=String(msg); }
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+  window.addEventListener("error", (e)=>showErr("JS 오류:\n" + (e.message || e.error)));
+  window.addEventListener("unhandledrejection", (e)=>showErr("Promise 오류:\n" + (e.reason?.message || e.reason)));
 
-const $ = id => document.getElementById(id);
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-let currentUser = null;
-let isAdmin = false;
+  // ✅ 네 설정 그대로
+  const firebaseConfig = {
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936"
+  };
 
-// 모달 열고 닫기
-$("openSignupBtn").onclick = ()=> $("signupBack").style.display="flex";
-$("closeSignupBtn").onclick = ()=> $("signupBack").style.display="none";
+  showOk("스크립트 로딩 완료 ✅");
 
-// 회원가입
-$("doSignupBtn").onclick = async ()=>{
-  const nick = $("suNick").value.trim();
-  const email = $("suEmail").value.trim();
-  const pw = $("suPw").value;
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-  if(!nick || !email || pw.length < 6){
-    alert("닉네임/이메일/비번(6자+) 모두 입력하세요");
-    return;
-  }
+  loginBtn.onclick = async ()=>{
+    try{
+      err.style.display="none"; ok.style.display="none";
+      const email = document.getElementById("email").value.trim();
+      const pw = document.getElementById("pw").value;
+      showOk("로그인 시도중...");
+      await signInWithEmailAndPassword(auth, email, pw);
+      showOk("로그인 성공!");
+    }catch(e){
+      showErr("로그인 실패:\n" + (e.code || "") + "\n" + (e.message || e));
+    }
+  };
 
-  const cred = await createUserWithEmailAndPassword(auth, email, pw);
-  await setDoc(doc(db,"users",cred.user.uid),{
-    nickname:nick,
-    email,
-    createdAt:new Date().toISOString()
-  });
+  logoutBtn.onclick = async ()=>{ await signOut(auth); };
 
-  alert("회원가입 완료!");
-  $("signupBack").style.display="none";
-};
-
-// 로그인
-$("loginBtn").onclick = async ()=>{
-  const email = $("email").value;
-  const pw = $("pw").value;
-  try{
-    await signInWithEmailAndPassword(auth,email,pw);
-  }catch(e){
-    alert("로그인 실패: "+ e.code);
-  }
-};
-
-// 로그아웃
-$("logoutBtn").onclick = async ()=>{
-  await signOut(auth);
-};
-
-// 관리자 체크
-async function checkAdmin(uid){
-  const s = await getDoc(doc(db,"admins",uid));
-  return s.exists();
-}
-
-// 로그 불러오기
-async function loadLogs(){
-  const snap = await getDocs(collection(db,"logs"));
-  const list = $("logList");
-  list.innerHTML="";
-
-  snap.forEach(d=>{
-    const data = d.data();
-    const row = document.createElement("div");
-    row.className="row";
-
-    let adminBtns = "";
-    if(isAdmin){
-      adminBtns = `
-        <div class="ctrl">
-          <button class="btn secondary" data-plus="${d.id}">+</button>
-          <button class="btn secondary" data-minus="${d.id}">-</button>
-          <button class="btn danger" data-del="${d.id}">삭제</button>
-        </div>
-      `;
+  onAuthStateChanged(auth, async (user)=>{
+    if(!user){
+      info.textContent = "상태: 미로그인";
+      logoutBtn.style.display="none";
+      loginBtn.style.display="inline-block";
+      return;
     }
 
-    row.innerHTML = `
-      <div>
-        <b>${data.nickname || "익명"}</b><br>
-        <small>${data.result || ""}</small>
-      </div>
-      ${adminBtns}
-    `;
-    list.appendChild(row);
+    // ✅ 로그인 성공하면 여기서 UID를 무조건 표시
+    info.textContent = "상태: 로그인됨\nUID: " + user.uid + "\nEmail: " + (user.email || "");
+
+    logoutBtn.style.display="inline-block";
+    loginBtn.style.display="none";
+
+    // 닉네임 읽기 시도(실패하면 에러 박스에 뜸)
+    try{
+      const u = await getDoc(doc(db,"users", user.uid));
+      if(u.exists()){
+        info.textContent += "\nNickname: " + (u.data().nickname || "");
+      }else{
+        info.textContent += "\nNickname: (users 문서 없음)";
+      }
+    }catch(e){
+      showErr("users 닉네임 읽기 실패(룰 또는 권한 문제 가능):\n" + (e.code||"") + "\n" + (e.message||e));
+    }
   });
-
-  if(isAdmin){
-    document.querySelectorAll("[data-del]").forEach(btn=>{
-      btn.onclick = async ()=>{
-        await deleteDoc(doc(db,"logs",btn.dataset.del));
-        loadLogs();
-      };
-    });
-  }
-}
-
-// 인증 상태 감지
-onAuthStateChanged(auth, async user=>{
-  currentUser = user;
-
-  if(!user){
-    $("authBox").classList.remove("hidden");
-    $("nickBadge").style.display="none";
-    $("logoutBtn").style.display="none";
-    $("wipeAllBtn").style.display="none";
-    $("status").textContent="미로그인";
-    return;
-  }
-
-  // 로그인 성공 → 입력창 숨김
-  $("authBox").classList.add("hidden");
-
-  // 닉네임 불러오기
-  const u = await getDoc(doc(db,"users",user.uid));
-  const nick = u.exists()?u.data().nickname:"(닉네임없음)";
-
-  // 관리자 여부
-  isAdmin = await checkAdmin(user.uid);
-
-  // ⭐️ 여기서 UID를 화면에 표시
-  $("nickBadge").textContent =
-    `${nick} | UID: ${user.uid}${isAdmin?" (관리자)":""}`;
-  $("nickBadge").style.display="inline-block";
-  $("logoutBtn").style.display="inline-block";
-
-  if(isAdmin){
-    $("wipeAllBtn").style.display="inline-block";
-  }
-
-  loadLogs();
-});
-
-// 전체삭제(관리자)
-$("wipeAllBtn").onclick = async ()=>{
-  if(!isAdmin) return;
-  if(!confirm("전체삭제?")) return;
-
-  const snap = await getDocs(collection(db,"logs"));
-  snap.forEach(d=> deleteDoc(doc(db,"logs",d.id)));
-  loadLogs();
-};
 </script>
 
 </body>
