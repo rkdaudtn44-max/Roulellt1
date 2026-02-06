@@ -1,14 +1,26 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>룰렛 메인</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>룰렛(관리자 전용)</title>
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,Arial;background:#f5f6f8;padding:18px;}
+  .wrap{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
+  .card{background:#fff;border:1px solid #e8e8e8;border-radius:16px;padding:14px;}
+  h1{margin:0;font-size:20px;}
+  .muted{color:#666;font-size:12px;line-height:1.4;margin-top:6px;}
+  input{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:12px;font-size:14px;}
+  .btn{width:100%;padding:11px 12px;border:none;border-radius:12px;background:#111;color:#fff;font-weight:900;cursor:pointer;margin-top:10px;}
+  .btn.secondary{background:#fff;color:#111;border:1px solid #e8e8e8;}
+  a{color:#2f6fed;text-decoration:none;font-weight:900;}
+  .hidden{display:none;}
+</style>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
@@ -23,67 +35,95 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-window.saveLog = async function(type, rouletteName) {
+const $ = (id)=>document.getElementById(id);
+
+async function checkAdmin(uid){
+  const s = await getDoc(doc(db,"admins",uid));
+  return s.exists();
+}
+
+async function saveLog(rouletteName){
   const user = auth.currentUser;
-  if (!user) {
-    alert("로그인 후 이용 가능합니다.");
-    window.location.href = "log.html";
+  if(!user){ alert("로그인이 필요해요."); location.href="log.html"; return; }
+
+  const nickname = $("nickname").value.trim();
+  if(!nickname){ alert("닉네임을 입력해줘"); return; }
+
+  const count = Math.max(1, Number($("count").value || 1));
+
+  // 🔒 실제로는 Rules에서 관리자만 write 가능
+  try{
+    await addDoc(collection(db,"logs"), {
+      uid: user.uid,
+      nickname,
+      roulette: rouletteName,
+      count,
+      createdAt: serverTimestamp()
+    });
+    alert("저장 완료!");
+  }catch(e){
+    alert("저장 실패(관리자 권한 필요): " + (e.code || e.message));
+  }
+}
+
+window.spinBasic = ()=>saveLog("일반룰렛");
+window.spinNoble = ()=>saveLog("귀족룰렛");
+window.spinTime  = ()=>saveLog("시간룰렛");
+
+onAuthStateChanged(auth, async (user)=>{
+  if(!user){
+    $("notLogin").classList.remove("hidden");
+    $("notAdmin").classList.add("hidden");
+    $("adminOnly").classList.add("hidden");
     return;
   }
-
-  const nick = document.getElementById("nickname").value.trim();
-  if (!nick) { alert("닉네임을 입력하세요"); return; }
-
-  const count = Number(document.getElementById("c"+type).value);
-
-  const result = {
-    uid: user.uid,
-    nickname: nick,
-    roulette: rouletteName,
-    count: count,
-    createdAt: serverTimestamp()
-  };
-
-  await addDoc(collection(db, "logs"), result);
-  alert("Firestore에 저장 완료!");
-}
+  const ok = await checkAdmin(user.uid);
+  if(!ok){
+    $("notLogin").classList.add("hidden");
+    $("notAdmin").classList.remove("hidden");
+    $("adminOnly").classList.add("hidden");
+    return;
+  }
+  $("notLogin").classList.add("hidden");
+  $("notAdmin").classList.add("hidden");
+  $("adminOnly").classList.remove("hidden");
+});
 </script>
-
-<style>
-body { font-family: Arial, sans-serif; background:#f5f5f5; text-align:center; padding:30px; }
-.box { background:white; padding:20px; margin:15px auto; width:320px; border-radius:10px; }
-button { padding:8px 16px; border:none; border-radius:6px; background:#4CAF50; color:white; }
-</style>
 </head>
-
 <body>
 
-<h1>🎯 룰렛</h1>
+<div class="wrap">
+  <div class="card">
+    <h1>🎯 룰렛</h1>
+    <div class="muted">관리자만 룰렛을 돌릴 수 있어요.</div>
+    <div class="muted" style="margin-top:8px;"><a href="log.html">📊 기록 사이트로 이동</a></div>
+  </div>
 
-닉네임<br>
-<input id="nickname" placeholder="닉네임 입력"><br><br>
+  <div id="notLogin" class="card hidden">
+    <b>로그인이 필요해요.</b>
+    <div class="muted">로그 사이트에서 로그인 후 다시 와줘.</div>
+    <button class="btn" onclick="location.href='log.html'">로그 사이트로 가기</button>
+  </div>
 
-<div class="box">
-  <h3>일반룰렛</h3>
-  횟수 <input type="number" id="c1" value="1" min="1"><br>
-  <button onclick="saveLog(1,'일반룰렛')">실행</button>
+  <div id="notAdmin" class="card hidden">
+    <b>관리자 전용 페이지야.</b>
+    <div class="muted">일반 유저는 기록 사이트만 이용할 수 있어.</div>
+    <button class="btn" onclick="location.href='log.html'">기록 사이트로 가기</button>
+  </div>
+
+  <div id="adminOnly" class="card hidden">
+    <b>관리자 룰렛 실행</b>
+    <div class="muted">닉네임/횟수 입력 후 원하는 룰렛 버튼을 눌러 저장해.</div>
+    <div style="margin-top:10px;">닉네임</div>
+    <input id="nickname" placeholder="닉네임 입력" />
+    <div style="margin-top:10px;">횟수</div>
+    <input id="count" type="number" min="1" value="1" />
+
+    <button class="btn" onclick="spinBasic()">일반룰렛 저장</button>
+    <button class="btn" onclick="spinNoble()">귀족룰렛 저장</button>
+    <button class="btn" onclick="spinTime()">시간룰렛 저장</button>
+  </div>
 </div>
-
-<div class="box">
-  <h3>귀족룰렛</h3>
-  횟수 <input type="number" id="c2" value="1" min="1"><br>
-  <button onclick="saveLog(2,'귀족룰렛')">실행</button>
-</div>
-
-<div class="box">
-  <h3>시간 룰렛</h3>
-  횟수 <input type="number" id="c3" value="1" min="1"><br>
-  <button onclick="saveLog(3,'시간 룰렛')">실행</button>
-</div>
-
-<p>
-<a href="log.html">📊 기록 보기 (로그)</a>
-</p>
 
 </body>
 </html>
