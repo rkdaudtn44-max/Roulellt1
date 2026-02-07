@@ -2,173 +2,94 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>룰렛</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f6f7fb;color:#111}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #e6e8ef}
-    .brand{display:flex;align-items:center;gap:10px;font-weight:900}
-    .wrap{max-width:920px;margin:0 auto;padding:18px}
-    .card{background:#fff;border:1px solid #e6e8ef;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 20px rgba(0,0,0,.04)}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .col{flex:1;min-width:240px}
-    input,select{width:100%;padding:12px;border-radius:12px;border:1px solid #d7dae6;font-size:16px;box-sizing:border-box}
-    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:800}
-    .btn.secondary{background:#fff;color:#111}
-    .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6e8ef;border-radius:999px;padding:8px 10px;font-size:13px}
-    .msg{padding:10px 12px;border-radius:12px;border:1px solid #e6e8ef;background:#fafbff;font-size:14px;white-space:pre-wrap}
-    .msg.err{border-color:#ffd1d1;background:#fff5f5;color:#a40000}
-    .msg.ok{border-color:#c9f3d1;background:#f3fff5;color:#0f6b1a}
-    .muted{color:#666;font-size:13px;line-height:1.5}
-    .divider{height:1px;background:#eef0f6;margin:14px 0}
-    .hidden{display:none!important}
-    h2{margin:0 0 10px}
-    .tag{margin-left:auto;font-weight:800;font-size:12px;border:1px solid #e6e8ef;padding:6px 10px;border-radius:999px;color:#444;background:#f7f8fd}
-    .resultLine{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:10px;padding:10px 12px;border:1px dashed #d7dae6;border-radius:12px;background:#fbfcff}
-    .resultText{font-weight:900}
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .top{position:sticky;top:0;background:rgba(246,247,251,.9);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+    .wrap{max-width:820px;margin:0 auto;padding:14px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .seg{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:800;cursor:pointer}
+    .pill.on{background:#111827;color:#fff;border-color:#111827}
+    h2{margin:0 0 10px;font-size:20px}
+    .muted{color:var(--muted);font-size:13px}
+    .list{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .li{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:#fff}
+    .li:first-child{border-top:none}
+    .li b{font-size:14px}
+    .li span{color:var(--muted);font-weight:700}
+    .result{font-size:18px;font-weight:900}
+    .small{font-size:12px;color:var(--muted)}
+    a{color:inherit}
   </style>
 </head>
 <body>
   <div class="top">
-    <div class="brand">🎯 룰렛</div>
-    <div class="row" style="gap:8px">
-      <a class="btn secondary" href="./log.html">📊 기록 사이트로 이동</a>
-      <span id="meChip" class="chip hidden"></span>
-      <button id="btnLogout" class="btn secondary hidden">로그아웃</button>
-    </div>
+    <button class="btn" onclick="location.href='log.html'">기록 보기</button>
+    <div style="flex:1"></div>
+    <div class="muted" id="who"></div>
+    <button class="btn" id="logoutBtn">로그아웃</button>
   </div>
 
   <div class="wrap">
     <div class="card">
-      <div id="statusMsg" class="msg">스크립트 로딩중…</div>
-      <div class="muted" style="margin-top:8px">
-        ✅ 관리자만 룰렛을 돌릴 수 있어요. (Firestore: users/{uid}.role == "admin")
-      </div>
-    </div>
-
-    <div id="authCard" class="card">
-      <h2 style="margin:0 0 10px">로그인 / 회원가입</h2>
       <div class="row">
-        <div class="col"><input id="email" type="email" placeholder="이메일" /></div>
-        <div class="col"><input id="pw" type="password" placeholder="비밀번호" /></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div class="col"><input id="nickname" type="text" placeholder="닉네임(회원가입 시 필수)" /></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="btnLogin" class="btn">로그인</button>
-        <button id="btnSignup" class="btn secondary">회원가입</button>
-      </div>
-      <div class="muted" style="margin-top:8px">
-        * 회원가입하면 Firestore users/{uid} 문서가 자동 생성돼요.
-      </div>
-    </div>
-
-    <div id="adminArea" class="hidden">
-      <!-- 누구 룰렛? -->
-      <div class="card">
-        <div class="row">
-          <span class="chip">🎯 누구 룰렛?</span>
+        <div>
+          <h2>룰렛 페이지</h2>
+          <div class="muted">관리자만 전체 수정 가능 / 일반 사용자는 보기 전용</div>
         </div>
-        <div class="row" style="margin-top:10px">
-          <div class="col"><input id="targetNick" type="text" placeholder="대상 닉네임 (예: 뿌리)" /></div>
-          <button id="btnSaveTarget" class="btn secondary">대상 저장</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <span class="chip" id="targetView">대상: -</span>
-        </div>
-        <div class="muted" style="margin-top:8px">
-          * 여기 입력한 닉네임으로 기록 페이지에 저장돼요. (로그인한 관리자 닉네임이 아니라 “대상 닉네임”)
-        </div>
+        <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
       </div>
 
-      <!-- 기본 룰렛 -->
-      <div class="card">
-        <div class="row">
-          <h2>기본 룰렛</h2>
-          <span class="tag">NORMAL</span>
-        </div>
-        <div class="row">
-          <span class="chip">몇 회 돌릴까?</span>
-          <div class="col"><input id="countNormal" type="number" min="1" value="1" /></div>
-          <button id="btnSpinNormal" class="btn" style="min-width:160px">🎲 돌리기</button>
-        </div>
-        <div class="resultLine">
-          <span class="chip" id="resNormal">결과: -</span>
-        </div>
-      </div>
+      <div style="height:10px"></div>
 
-      <!-- 귀족 룰렛 -->
-      <div class="card">
-        <div class="row">
-          <h2>귀족 룰렛</h2>
-          <span class="tag">NOBLE</span>
-        </div>
-        <div class="row">
-          <span class="chip">몇 회 돌릴까?</span>
-          <div class="col"><input id="countNoble" type="number" min="1" value="1" /></div>
-          <button id="btnSpinNoble" class="btn" style="min-width:160px">🎲 돌리기</button>
-        </div>
-        <div class="resultLine">
-          <span class="chip" id="resNoble">결과: -</span>
-        </div>
-      </div>
+      <div class="seg" id="typeSeg"></div>
 
-      <!-- 시간 룰렛 -->
-      <div class="card">
-        <div class="row">
-          <h2>시간 룰렛</h2>
-          <span class="tag">TIME</span>
-        </div>
-        <div class="row">
-          <span class="chip">몇 회 돌릴까?</span>
-          <div class="col"><input id="countTime" type="number" min="1" value="1" /></div>
-          <button id="btnSpinTime" class="btn" style="min-width:160px">🎲 돌리기</button>
-        </div>
-        <div class="resultLine">
-          <span class="chip" id="resTime">결과: -</span>
-        </div>
-      </div>
+      <div style="height:12px"></div>
 
-      <div class="card">
-        <div class="muted">
-          * 룰렛 결과는 Firestore <b>logs</b> 컬렉션에 저장돼요.<br/>
-          * 기록 페이지(log.html)에서 “대상 닉네임”별로 확인 가능.
-        </div>
-      </div>
+      <div class="muted">현재 룰렛 항목</div>
+      <div class="list" id="itemsBox"></div>
+
+      <div style="height:12px"></div>
+      <div class="result" id="resultText">결과: -</div>
+      <div class="small" id="resultMeta"></div>
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-    import {
-      getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-      signOut, setPersistence, browserLocalPersistence
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-    import {
-      getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, addDoc
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+<script>
+/** ========= 공용 저장소 키 ========= */
+const LS_USER = "currentUser";       // { nickname, role }  role: 'admin' | 'user'
+const LS_LOG  = "rouletteLog";       // [{id,nickname,type,item,ts}]
+/** ========= 유저 ========= */
+function getUser(){
+  try { return JSON.parse(localStorage.getItem(LS_USER) || "null"); } catch { return null; }
+}
+const user = getUser();
+if(!user || !user.nickname){
+  // 너가 쓰던 로그인 페이지가 따로 있으면 그걸로 바꿔도 됨
+  alert("로그인이 필요해요.");
+  location.href = "index.html";
+}
+document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-      authDomain: "roulette-b5455.firebaseapp.com",
-      projectId: "roulette-b5455",
-      storageBucket: "roulette-b5455.firebasestorage.app",
-      messagingSenderId: "728191308035",
-      appId: "1:728191308035:web:b14b46c38bbe0261969936",
-      measurementId: "G-SPY41ZKXYQ"
-    };
+document.getElementById("logoutBtn").onclick = () => {
+  localStorage.removeItem(LS_USER);
+  location.href = "index.html";
+};
 
-    const $ = (id) => document.getElementById(id);
-    const statusMsg = $("statusMsg");
-    const show = (el, yes) => el.classList.toggle("hidden", !yes);
-    function setStatus(text, type="") {
-      statusMsg.textContent = text;
-      statusMsg.className = "msg" + (type ? " " + type : "");
-    }
-
-    // ===== 룰렛 목록 =====
-    const normal = [
+/** ========= 룰렛 데이터(여기만 바꾸면 됨) =========
+ * text: 표시할 항목명 (반드시 있어야 함)
+ * w: 가중치(비율 숫자)
+ */
+const ROULETTES = {
+  normal: {
+    label: "일반",
+    items: [
       { text: "냥멍체[3분]", w: 3.4 },
       { text: "원하는체[3분_5글자]", w: 3.4 },
       { text: "짧은애교대사[5줄 이하]", w: 1.7 },
@@ -181,33 +102,12 @@
       { text: "실드+100", w: 2.3 },
       { text: "실드-100", w: 2.3 },
       { text: "ASMR방송[3분]", w: 1.7 },
-      { text: "룰렛 다돌권", w: 3.4 },
-      { text: "헬기 리액[킵x]", w: 1.7 },
-      { text: "ㅇ받침체[2분]", w: 3.4 },
-      { text: "출석체크 리액[킵x]", w: 3.4 },
-      { text: "브라보[킵x]", w: 3.4 },
-      { text: "3인칭[1분]", w: 3.4 },
-      { text: "방종까지 쉴드 0개[킵x]", w: 1.7 },
-      { text: "발박수", w: 3.4 },
-      { text: "방제 변경권[10분/킵 불가]", w: 1.7 },
-      { text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
-      { text: "연하충애교도리[1분]", w: 1.7 },
-      { text: "봉인추가", w: 1.7 },
-      { text: "봉인제거", w: 1.7 },
-      { text: "이쑤시개 리액션[킵x]", w: 1.7 },
-      { text: "배통통[킵x]", w: 3.4 },
-      { text: "공지변경권[다음 방송까지]", w: 1.7 },
-      { text: "박수 3번[킵x]", w: 3.4 },
-      { text: "투명의자 1분[킵x]", w: 1.7 },
-      { text: "스쿼트 5개[킵x]", w: 1.7 },
-      { text: "벽찍[킵x]", w: 3.4 },
-      { text: "TMI 1개 올리기", w: 3.4 },
-      { text: "이름 3번 불러주기", w: 1.7 },
-      { text: "꽝", w: 12.1 }
-    ];
-
-    // 귀족: 9번 퍼센트가 안 적혀 있었어서 "나머지"로 자동 맞춤
-    const nobleBase = [
+      { text: "룰렛 다돌권 3", w: 1.0 }
+    ]
+  },
+  noble: {
+    label: "귀족",
+    items: [
       { text: "24시간 닉변권", w: 10 },
       { text: "24시간 역닉변권", w: 10 },
       { text: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w: 4 },
@@ -215,207 +115,110 @@
       { text: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w: 4 },
       { text: "캐스트 저장권 2회", w: 13 },
       { text: "실드 2배", w: 5 },
-      { text: "실드펑 2배", w: 5 }
-    ];
-    const nobleSum = nobleBase.reduce((a,b)=>a+b.w,0);
-    const noble = [...nobleBase, { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: Math.max(0, 100 - nobleSum) }];
+      { text: "실드펑 2배", w: 5 },
+      { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 45 }
+    ]
+  },
+  time: {
+    label: "시간",
+    items: [
+      { text: "1분", w: 20 },
+      { text: "3분", w: 30 },
+      { text: "5분", w: 25 },
+      { text: "10분", w: 15 },
+      { text: "20분", w: 10 }
+    ]
+  }
+};
 
-    const time = [
-      { text: "방송 연장권 +1분", w: 41 },
-      { text: "방송 연장권 +10분", w: 5 },
-      { text: "방송 연장권 +20분", w: 3 },
-      { text: "방송 연장권 +30분", w: 1 },
-      { text: "방송 단축권 -1분", w: 41 },
-      { text: "방송 단축권 -10분", w: 5 },
-      { text: "방송 단축권 -20분", w: 3 },
-      { text: "방송 단축권 -30분", w: 1 }
-    ];
+let currentType = "normal";
 
-    function pickWeighted(items){
-      const total = items.reduce((a,b)=>a+b.w,0);
-      const r = Math.random() * total;
-      let acc = 0;
-      for (const it of items){
-        acc += it.w;
-        if (r <= acc) return it.text;
-      }
-      return items[items.length-1]?.text ?? "-";
-    }
+/** ========= UI 렌더 ========= */
+const typeSeg = document.getElementById("typeSeg");
+const itemsBox = document.getElementById("itemsBox");
 
-    // ===== Firebase init =====
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+function renderTypes(){
+  typeSeg.innerHTML = "";
+  Object.keys(ROULETTES).forEach(key=>{
+    const b = document.createElement("button");
+    b.className = "pill" + (key===currentType ? " on" : "");
+    b.textContent = ROULETTES[key].label;
+    b.onclick = ()=>{ currentType = key; renderTypes(); renderItems(); };
+    typeSeg.appendChild(b);
+  });
+}
+function renderItems(){
+  const items = ROULETTES[currentType].items || [];
+  itemsBox.innerHTML = "";
+  items.forEach(it=>{
+    const row = document.createElement("div");
+    row.className = "li";
+    row.innerHTML = `<b>${escapeHtml(it.text || "-")}</b><span>${Number(it.w||0)}%</span>`;
+    itemsBox.appendChild(row);
+  });
+  if(items.length===0){
+    itemsBox.innerHTML = `<div class="li"><b>-</b><span>0%</span></div>`;
+  }
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 
-    // 로그인 유지(룰렛/로그 페이지 자동 연동)
-    await setPersistence(auth, browserLocalPersistence);
+renderTypes();
+renderItems();
 
-    // ===== users 문서 보장 =====
-    async function ensureUserDoc(user, nicknameInput=""){
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
-      if (!snap.exists()){
-        const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
-        await setDoc(ref, {
-          email: user.email || "",
-          nickname: nick,
-          role: "user",
-          createdAt: serverTimestamp()
-        }, { merge:true });
-      } else {
-        await setDoc(ref, { email: user.email || "" }, { merge:true });
-      }
-      const again = await getDoc(ref);
-      return again.data() || {};
-    }
+/** ========= 룰렛 뽑기(가중치) ========= */
+function pickWeighted(items){
+  const cleaned = items
+    .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
+    .filter(x=>x.text.length>0 && x.w>0);
 
-    async function getUserData(user){
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
-      return snap.exists() ? (snap.data()||{}) : {};
-    }
+  const total = cleaned.reduce((a,b)=>a+b.w,0);
+  if(total<=0) return { text:"-", w:0 };
 
-    // ===== 대상 닉네임 저장 =====
-    function loadTarget(){
-      return localStorage.getItem("rouletteTargetNick") || "";
-    }
-    function saveTarget(nick){
-      localStorage.setItem("rouletteTargetNick", nick);
-    }
-    function renderTarget(){
-      const t = loadTarget();
-      $("targetView").textContent = "대상: " + (t || "-");
-      $("targetNick").value = t;
-    }
+  let r = Math.random()*total;
+  for(const it of cleaned){
+    r -= it.w;
+    if(r <= 0) return it;
+  }
+  return cleaned[cleaned.length-1] || { text:"-", w:0 };
+}
 
-    $("btnSaveTarget").addEventListener("click", ()=>{
-      const nick = $("targetNick").value.trim();
-      saveTarget(nick);
-      renderTarget();
-      setStatus("대상 저장 완료 ✅", "ok");
-    });
+/** ========= 로그 저장 ========= */
+function loadLog(){
+  try { return JSON.parse(localStorage.getItem(LS_LOG) || "[]"); } catch { return []; }
+}
+function saveLog(list){
+  localStorage.setItem(LS_LOG, JSON.stringify(list));
+}
+function addLogEntry({nickname,type,item}){
+  const list = loadLog();
+  list.push({
+    id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random().toString(16).slice(2),
+    nickname,
+    type,
+    item: String(item||"-"),   // ★ 여기서 항목이 절대 비지 않게 고정
+    ts: Date.now()
+  });
+  saveLog(list);
+}
 
-    // ===== Auth UI =====
-    $("btnLogin").addEventListener("click", async ()=>{
-      try{
-        setStatus("로그인 시도중…");
-        const email = $("email").value.trim();
-        const pw = $("pw").value;
-        await signInWithEmailAndPassword(auth, email, pw);
-      }catch(e){
-        setStatus("로그인 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err");
-      }
-    });
+document.getElementById("spinBtn").onclick = ()=>{
+  const pack = ROULETTES[currentType];
+  const picked = pickWeighted(pack.items || []);
+  const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
 
-    $("btnSignup").addEventListener("click", async ()=>{
-      try{
-        setStatus("회원가입 시도중…");
-        const email = $("email").value.trim();
-        const pw = $("pw").value;
-        const nick = $("nickname").value.trim();
-        if (!nick) { setStatus("회원가입은 닉네임이 필요해요.", "err"); return; }
-        const cred = await createUserWithEmailAndPassword(auth, email, pw);
-        await ensureUserDoc(cred.user, nick);
-        setStatus("회원가입 완료 ✅", "ok");
-      }catch(e){
-        setStatus("회원가입 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err");
-      }
-    });
+  document.getElementById("resultText").textContent = `결과: ${itemText}`;
+  const dt = new Date();
+  document.getElementById("resultMeta").textContent = `${pack.label} · ${dt.toLocaleString("ko-KR")}`;
 
-    $("btnLogout").addEventListener("click", async ()=>{
-      await signOut(auth);
-    });
-
-    async function spinAndSave(type, items, count, resEl){
-      const user = auth.currentUser;
-      if (!user) { setStatus("로그인이 필요해요.", "err"); return; }
-
-      // 관리자 확인
-      const u = await getUserData(user);
-      if ((u.role || "user") !== "admin"){
-        setStatus("관리자가 아니에요. (users/{uid}.role == \"admin\")", "err");
-        return;
-      }
-
-      const target = loadTarget().trim();
-      if (!target){
-        setStatus("먼저 ‘누구 룰렛?’ 대상 닉네임을 저장해줘!", "err");
-        return;
-      }
-
-      const n = Math.max(1, Math.min(200, parseInt(count, 10) || 1));
-      const results = [];
-      for (let i=0;i<n;i++){
-        results.push(pickWeighted(items));
-      }
-
-      // UI 표시
-      resEl.textContent = "결과: " + results.join(" / ");
-
-      // Firestore 저장
-      // ✅ 여기서 실패하면 logs 컬렉션이 안 생김 → Rules 문제일 가능성 매우 큼
-      await addDoc(collection(db, "logs"), {
-        byUid: user.uid,
-        byEmail: user.email || "",
-        byNickname: u.nickname || "",
-        targetNickname: target,
-        rouletteType: type,
-        results,
-        count: n,
-        createdAt: serverTimestamp()
-      });
-
-      setStatus(`저장 완료 ✅ (${type}, ${n}회)`, "ok");
-    }
-
-    $("btnSpinNormal").addEventListener("click", async ()=>{
-      try{ await spinAndSave("normal", normal, $("countNormal").value, $("resNormal")); }
-      catch(e){ setStatus("저장 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err"); }
-    });
-    $("btnSpinNoble").addEventListener("click", async ()=>{
-      try{ await spinAndSave("noble", noble, $("countNoble").value, $("resNoble")); }
-      catch(e){ setStatus("저장 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err"); }
-    });
-    $("btnSpinTime").addEventListener("click", async ()=>{
-      try{ await spinAndSave("time", time, $("countTime").value, $("resTime")); }
-      catch(e){ setStatus("저장 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err"); }
-    });
-
-    // ===== Auth state =====
-    onAuthStateChanged(auth, async (user)=>{
-      if (!user){
-        show($("authCard"), true);
-        show($("btnLogout"), false);
-        show($("meChip"), false);
-        show($("adminArea"), false);
-        $("meChip").textContent = "";
-        setStatus("미로그인 상태", "");
-        return;
-      }
-
-      try{
-        const data = await ensureUserDoc(user, $("nickname").value.trim());
-        const role = data.role || "user";
-        const nick = data.nickname || "";
-
-        show($("authCard"), false);
-        show($("btnLogout"), true);
-        show($("meChip"), true);
-        $("meChip").textContent = (nick ? nick : user.email) + " · " + role;
-
-        renderTarget();
-
-        if (role === "admin"){
-          show($("adminArea"), true);
-          setStatus("관리자 로그인됨 ✅", "ok");
-        } else {
-          show($("adminArea"), false);
-          setStatus("로그인됨 (일반 사용자) — 관리자는 룰렛을 돌릴 수 있어요.", "ok");
-        }
-      }catch(e){
-        setStatus("로그인 후 처리 실패:\n" + (e?.message || e), "err");
-      }
-    });
-  </script>
+  // ★ 저장
+  addLogEntry({
+    nickname: user.nickname,
+    type: currentType,
+    item: itemText
+  });
+};
+</script>
 </body>
 </html>
