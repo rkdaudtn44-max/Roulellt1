@@ -25,8 +25,8 @@
       <h1>로그인 / 회원가입</h1>
       <div class="muted">폰/PC 어디서든 동일 기록을 보려면 Firebase 로그인으로 동작해요.</div>
 
-      <label>아이디</label>
-      <input id="id" placeholder="예) seongyeon" autocomplete="username" />
+      <label>이메일</label>
+      <input id="email" placeholder="예) dori0223@gmail.com" autocomplete="username" inputmode="email" />
 
       <label>비밀번호</label>
       <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password" />
@@ -40,7 +40,7 @@
       </div>
 
       <div class="note">
-        • 닉네임/아이디 중복 불가<br/>
+        • 닉네임/이메일 중복 불가<br/>
         • 닉네임이 <b>도리</b>면 관리자 권한
       </div>
 
@@ -70,8 +70,9 @@
   const $ = (id)=>document.getElementById(id);
   const msg = (t)=>{ $("msg").textContent = t; };
 
-  // 아이디를 이메일 형태로 변환(실제 이메일을 강제하지 않기)
-  const toEmail = (id)=> `${String(id||"").trim().toLowerCase()}@roulette.local`;
+  function normEmail(v){
+    return String(v || "").trim().toLowerCase();
+  }
 
   async function isDuplicate(field, value){
     const q = query(collection(db, "users"), where(field, "==", value));
@@ -81,11 +82,11 @@
 
   $("loginBtn").onclick = async ()=>{
     try{
-      const id = $("id").value.trim();
+      const email = normEmail($("email").value);
       const pw = $("pw").value;
-      if(!id || !pw) return msg("아이디/비밀번호를 입력해줘.");
+      if(!email || !pw) return msg("이메일/비밀번호를 입력해줘.");
 
-      await signInWithEmailAndPassword(auth, toEmail(id), pw);
+      await signInWithEmailAndPassword(auth, email, pw);
       location.replace("roulette.html");
     }catch(e){
       msg("로그인 실패: " + (e?.message || e));
@@ -94,18 +95,19 @@
 
   $("signupBtn").onclick = async ()=>{
     try{
-      const id = $("id").value.trim();
+      const email = normEmail($("email").value);
       const pw = $("pw").value;
       const nickname = $("nick").value.trim();
-      if(!id || !pw || !nickname) return msg("아이디/비밀번호/닉네임을 모두 입력해줘.");
+      if(!email || !pw || !nickname) return msg("이메일/비밀번호/닉네임을 모두 입력해줘.");
 
-      if(await isDuplicate("id", id)) return msg("이미 사용 중인 아이디야.");
+      // ✅ 중복 체크(이메일/닉네임)
+      if(await isDuplicate("email", email)) return msg("이미 사용 중인 이메일이야.");
       if(await isDuplicate("nickname", nickname)) return msg("이미 사용 중인 닉네임이야.");
 
-      const cred = await createUserWithEmailAndPassword(auth, toEmail(id), pw);
+      const cred = await createUserWithEmailAndPassword(auth, email, pw);
 
       const role = (nickname === "도리") ? "admin" : "user";
-      await setDoc(doc(db, "users", cred.user.uid), { id, nickname, role });
+      await setDoc(doc(db, "users", cred.user.uid), { email, nickname, role });
 
       location.replace("roulette.html");
     }catch(e){
