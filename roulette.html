@@ -5,23 +5,35 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>룰렛</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f6f7fb;color:#111}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #e6e8ef}
+    :root{
+      --bg:#f6f7fb; --card:#fff; --line:#e6e8ef; --text:#111; --muted:#666;
+      --black:#111; --radius:16px;
+    }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text)}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line)}
     .brand{display:flex;align-items:center;gap:10px;font-weight:900}
-    .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6e8ef;border-radius:999px;padding:8px 10px;font-size:13px}
-    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:800}
-    .btn.secondary{background:#fff;color:#111}
-    .wrap{max-width:860px;margin:0 auto;padding:18px}
-    .card{background:#fff;border:1px solid #e6e8ef;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 20px rgba(0,0,0,.04)}
+    .btn{border:1px solid #d7dae6;background:var(--black);color:#fff;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer}
+    .btn.secondary{background:#fff;color:var(--text)}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 10px;font-size:13px}
+    .wrap{max-width:920px;margin:0 auto;padding:18px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0;box-shadow:0 6px 20px rgba(0,0,0,.04)}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    input,select{width:100%;max-width:360px;padding:12px;border-radius:12px;border:1px solid #d7dae6;font-size:16px}
-    .msg{padding:10px 12px;border-radius:12px;border:1px solid #e6e8ef;background:#fafbff;font-size:14px;white-space:pre-wrap}
+    input{width:100%;max-width:360px;padding:12px;border-radius:12px;border:1px solid #d7dae6;font-size:16px}
+    .msg{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#fafbff;font-size:14px;white-space:pre-wrap}
     .msg.err{border-color:#ffd1d1;background:#fff5f5;color:#a40000}
     .msg.ok{border-color:#c9f3d1;background:#f3fff5;color:#0f6b1a}
-    .big{font-size:22px;font-weight:900}
-    .muted{color:#666;font-size:13px;line-height:1.5}
+    .muted{color:var(--muted);font-size:13px;line-height:1.5}
+    .big{font-size:22px;font-weight:1000}
     .divider{height:1px;background:#eef0f6;margin:14px 0}
     .hidden{display:none!important}
+    .secTitle{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+    .secTitle h3{margin:0;font-size:18px}
+    .pill{font-size:12px;color:#333;background:#f1f3f9;border:1px solid var(--line);padding:6px 10px;border-radius:999px}
+    .results{margin-top:10px;display:grid;gap:8px}
+    .resultLine{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+    .resultLine b{font-weight:900}
+    .tiny{font-size:12px;color:var(--muted)}
   </style>
 </head>
 <body>
@@ -38,70 +50,117 @@
     <div class="card">
       <div id="statusMsg" class="msg">스크립트 로딩중…</div>
       <div class="muted" style="margin-top:8px">
-        ✅ 관리자만 룰렛을 돌릴 수 있어요. (Firestore: <b>users/{uid}.role == "admin"</b>)
+        ✅ 룰렛은 <b>관리자만</b> 돌릴 수 있어요. (Firestore: <b>users/{uid}.role == "admin"</b>)
       </div>
     </div>
 
+    <!-- Auth: 로그인/회원가입 "모드 전환" -->
     <div id="authCard" class="card">
-      <h3 style="margin:0 0 10px">로그인 / 회원가입</h3>
+      <div class="secTitle">
+        <h3 id="authTitle">로그인</h3>
+        <span class="pill" id="authModePill">LOGIN</span>
+      </div>
+      <div class="divider"></div>
+
       <div class="row">
-        <input id="email" type="email" placeholder="이메일" />
-        <input id="pw" type="password" placeholder="비밀번호" />
+        <input id="email" type="email" placeholder="이메일" autocomplete="email" />
+        <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password" />
       </div>
+
+      <div id="nicknameRow" class="row hidden" style="margin-top:10px">
+        <input id="nickname" type="text" placeholder="닉네임(회원가입 시 필수)" autocomplete="nickname" />
+      </div>
+
       <div class="row" style="margin-top:10px">
-        <input id="nickname" type="text" placeholder="닉네임(회원가입 시 필수)" />
+        <button id="btnPrimary" class="btn">로그인</button>
+        <button id="btnToggleMode" class="btn secondary">회원가입</button>
       </div>
-      <div class="row" style="margin-top:10px">
-        <button id="btnLogin" class="btn">로그인</button>
-        <button id="btnSignup" class="btn secondary">회원가입</button>
-      </div>
+
       <div class="muted" style="margin-top:8px">
         * 회원가입하면 Firestore <b>users/{uid}</b> 문서가 자동 생성돼요.
       </div>
     </div>
 
-    <div id="adminOnly" class="card hidden">
-      <div class="row" style="justify-content:space-between">
-        <div>
-          <div class="big">룰렛</div>
-          <div class="muted">관리자만 룰렛을 돌릴 수 있어요.</div>
+    <!-- Admin Only Area -->
+    <div id="adminArea" class="hidden">
+      <!-- 1) 기본 룰렛 -->
+      <div class="card">
+        <div class="secTitle">
+          <h3>기본 룰렛</h3>
+          <span class="pill">NORMAL</span>
         </div>
-        <div style="min-width:220px">
-          <select id="rouletteType">
-            <option value="normal">기본 룰렛</option>
-            <option value="noble">귀족 룰렛</option>
-            <option value="time">시간 룰렛</option>
-          </select>
+        <div class="divider"></div>
+        <div class="row">
+          <span class="chip">몇 회 돌릴까?</span>
+          <input id="cntNormal" type="number" min="1" max="200" value="1" style="max-width:140px" />
+          <button id="spinNormal" class="btn" style="min-width:150px">🎲 돌리기</button>
+          <span id="lastNormal" class="chip">결과: -</span>
+        </div>
+        <div class="results" id="listNormal"></div>
+      </div>
+
+      <!-- 2) 귀족 룰렛 -->
+      <div class="card">
+        <div class="secTitle">
+          <h3>귀족 룰렛</h3>
+          <span class="pill">NOBLE</span>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <span class="chip">몇 회 돌릴까?</span>
+          <input id="cntNoble" type="number" min="1" max="200" value="1" style="max-width:140px" />
+          <button id="spinNoble" class="btn" style="min-width:150px">🎲 돌리기</button>
+          <span id="lastNoble" class="chip">결과: -</span>
+        </div>
+        <div class="results" id="listNoble"></div>
+      </div>
+
+      <!-- 3) 시간 룰렛 -->
+      <div class="card">
+        <div class="secTitle">
+          <h3>시간 룰렛</h3>
+          <span class="pill">TIME</span>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <span class="chip">몇 회 돌릴까?</span>
+          <input id="cntTime" type="number" min="1" max="200" value="1" style="max-width:140px" />
+          <button id="spinTime" class="btn" style="min-width:150px">🎲 돌리기</button>
+          <span id="lastTime" class="chip">결과: -</span>
+        </div>
+        <div class="results" id="listTime"></div>
+      </div>
+
+      <div class="card">
+        <div class="muted">
+          * 결과는 Firestore <b>logs</b> 컬렉션에 저장돼요.<br>
+          * 기록 페이지(log.html)에서 닉네임별 아코디언으로 확인 가능.
         </div>
       </div>
+    </div>
 
+    <!-- Non-admin 안내 -->
+    <div id="nonAdminCard" class="card hidden">
+      <div class="big">룰렛</div>
+      <div class="muted">관리자만 룰렛을 돌릴 수 있어요.</div>
       <div class="divider"></div>
-
-      <div class="row">
-        <button id="btnSpin" class="btn" style="min-width:160px">🎲 룰렛 돌리기</button>
-        <span class="chip" id="spinResult">결과: -</span>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="muted">
-        * 룰렛 결과는 Firestore <b>logs</b> 컬렉션에 저장돼요.<br/>
-        * 기록 페이지(log.html)에서 닉네임별로 확인 가능.
-      </div>
+      <a class="btn secondary" href="./log.html">📊 기록 페이지로 이동</a>
     </div>
   </div>
 
   <script type="module">
-    // ===== Firebase SDK =====
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
     import {
-      getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
+      getAuth, onAuthStateChanged,
+      signInWithEmailAndPassword, createUserWithEmailAndPassword,
+      signOut, setPersistence, browserLocalPersistence
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, addDoc
+      getFirestore, doc, getDoc, setDoc, serverTimestamp,
+      collection, addDoc
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ✅ 네가 준 실제 firebaseConfig
+    // ✅ 너가 준 firebaseConfig (그대로)
     const firebaseConfig = {
       apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
@@ -112,16 +171,15 @@
       measurementId: "G-SPY41ZKXYQ"
     };
 
-    // ===== UI helpers =====
     const $ = (id) => document.getElementById(id);
+    const statusMsg = $("statusMsg");
     function setStatus(text, type="") {
-      const el = $("statusMsg");
-      el.textContent = text;
-      el.className = "msg" + (type ? " " + type : "");
+      statusMsg.textContent = text;
+      statusMsg.className = "msg" + (type ? " " + type : "");
     }
     function show(el, yes){ el.classList.toggle("hidden", !yes); }
 
-    // ===== Roulette lists =====
+    // ===== 룰렛 목록 =====
     const ROULETTES = {
       normal: [
         { text: "냥멍체[3분]", w: 3.4 },
@@ -160,7 +218,6 @@
         { text: "이름 3번 불러주기", w: 1.7 },
         { text: "꽝", w: 12.1 }
       ],
-      // 귀족 룰렛: (9번 퍼센트 미기재였어서 나머지 자동)
       noble: (function(){
         const base = [
           { text: "24시간 닉변권", w: 10 },
@@ -200,119 +257,186 @@
       return items[items.length-1]?.text ?? "-";
     }
 
-    // ===== Init Firebase =====
-    let app, auth, db;
-    try{
-      app = initializeApp(firebaseConfig);
-      auth = getAuth(app);
-      db = getFirestore(app);
-      setStatus("스크립트 로딩 완료 ✅", "ok");
-    }catch(e){
-      setStatus("Firebase 초기화 실패:\n" + (e?.message || e), "err");
-      throw e;
+    function clampInt(v, min, max){
+      const n = parseInt(String(v||"").trim(), 10);
+      if (Number.isNaN(n)) return min;
+      return Math.max(min, Math.min(max, n));
     }
 
-    // ===== user doc =====
+    function addResultLine(listEl, text){
+      const line = document.createElement("div");
+      line.className = "resultLine";
+      line.innerHTML = `<b>${escapeHtml(text)}</b><span class="tiny">${new Date().toLocaleTimeString()}</span>`;
+      listEl.prepend(line);
+      // 너무 길어지면 30개까지만
+      while (listEl.children.length > 30) listEl.removeChild(listEl.lastChild);
+    }
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, (c)=>({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    // ===== Firebase init =====
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ✅ 이게 있어야 “룰렛에서 로그인하면 로그도 자동 로그인”이 안정적으로 됨
+    await setPersistence(auth, browserLocalPersistence);
+
+    setStatus("스크립트 로딩 완료 ✅", "ok");
+
+    // ===== users/{uid} 문서 보장 =====
     async function ensureUserDoc(user, nicknameInput=""){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
-
-      const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
       if (!snap.exists()){
+        const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
         await setDoc(ref, {
           email: user.email || "",
           nickname: nick,
           role: "user",
           createdAt: serverTimestamp()
         }, { merge:true });
-      } else {
+        return { email:user.email||"", nickname:nick, role:"user" };
+      }
+      const data = snap.data() || {};
+      // 보정
+      if (!data.email || data.email !== (user.email||"")){
         await setDoc(ref, { email: user.email || "" }, { merge:true });
       }
-      const again = await getDoc(ref);
-      return again.data() || {};
+      return (await getDoc(ref)).data() || {};
     }
 
-    async function getUserData(user){
+    async function getRole(user){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
-      if (!snap.exists()) return { role:"user", nickname:"" };
-      const data = snap.data() || {};
-      return { role: data.role || "user", nickname: data.nickname || "" };
+      const data = snap.exists() ? (snap.data()||{}) : {};
+      return {
+        role: data.role || "user",
+        nickname: data.nickname || ""
+      };
     }
 
-    // ===== Events =====
-    $("btnLogin").addEventListener("click", async ()=>{
-      try{
-        setStatus("로그인 시도중…");
-        const email = $("email").value.trim();
-        const pw = $("pw").value;
-        await signInWithEmailAndPassword(auth, email, pw);
-      }catch(e){
-        setStatus("로그인 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
+    // ===== Auth UI mode (로그인/회원가입 전환) =====
+    let mode = "login"; // login | signup
+    function setMode(next){
+      mode = next;
+      $("authModePill").textContent = mode.toUpperCase();
+      if (mode === "login"){
+        $("authTitle").textContent = "로그인";
+        $("btnPrimary").textContent = "로그인";
+        $("btnToggleMode").textContent = "회원가입";
+        show($("nicknameRow"), false);
+      } else {
+        $("authTitle").textContent = "회원가입";
+        $("btnPrimary").textContent = "가입 완료";
+        $("btnToggleMode").textContent = "로그인으로";
+        show($("nicknameRow"), true);
       }
+    }
+    setMode("login");
+
+    $("btnToggleMode").addEventListener("click", ()=>{
+      setMode(mode === "login" ? "signup" : "login");
+      setStatus(mode === "signup" ? "회원가입 모드로 전환됨" : "로그인 모드로 전환됨", "ok");
     });
 
-    $("btnSignup").addEventListener("click", async ()=>{
-      try{
-        setStatus("회원가입 시도중…");
-        const email = $("email").value.trim();
-        const pw = $("pw").value;
-        const nick = $("nickname").value.trim();
-        if (!nick) { setStatus("회원가입은 닉네임이 필요해요.", "err"); return; }
+    $("btnPrimary").addEventListener("click", async ()=>{
+      const email = $("email").value.trim();
+      const pw = $("pw").value;
 
-        const cred = await createUserWithEmailAndPassword(auth, email, pw);
-        await ensureUserDoc(cred.user, nick);
-
-        setStatus("회원가입 완료 ✅", "ok");
-      }catch(e){
-        setStatus("회원가입 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
+      if (!email || !pw){
+        setStatus("이메일/비밀번호를 입력해줘.", "err");
+        return;
       }
-    });
-
-    $("btnLogout").addEventListener("click", async ()=>{
-      await signOut(auth);
-    });
-
-    $("btnSpin").addEventListener("click", async ()=>{
-      const user = auth.currentUser;
-      if (!user) { setStatus("로그인이 필요해요.", "err"); return; }
 
       try{
-        const { role, nickname } = await getUserData(user);
-        if (role !== "admin"){
-          setStatus("관리자가 아니에요. (users/{uid}.role == \"admin\" 필요)", "err");
-          return;
+        if (mode === "login"){
+          setStatus("로그인 시도중…");
+          await signInWithEmailAndPassword(auth, email, pw);
+        } else {
+          const nick = $("nickname").value.trim();
+          if (!nick){
+            setStatus("회원가입은 닉네임이 필요해요.", "err");
+            return;
+          }
+          setStatus("회원가입 시도중…");
+          const cred = await createUserWithEmailAndPassword(auth, email, pw);
+          await ensureUserDoc(cred.user, nick);
+          setStatus("회원가입 완료 ✅", "ok");
         }
+      }catch(e){
+        setStatus(
+          (mode === "login" ? "로그인 실패:\n" : "회원가입 실패:\n") +
+          (e?.code || "") + "\n" + (e?.message || e),
+          "err"
+        );
+      }
+    });
 
-        const type = $("rouletteType").value;
-        const items = ROULETTES[type];
+    $("btnLogout").addEventListener("click", async ()=>{ await signOut(auth); });
+
+    // ===== Spin handlers =====
+    async function spinMany(type, count, lastEl, listEl){
+      const user = auth.currentUser;
+      if (!user){ setStatus("로그인이 필요해요.", "err"); return; }
+
+      // 관리자 실시간 체크
+      const me = await getRole(user);
+      if (me.role !== "admin"){
+        setStatus("관리자가 아니에요. (users/{uid}.role == \"admin\" 필요)", "err");
+        show($("adminArea"), false);
+        show($("nonAdminCard"), true);
+        return;
+      }
+
+      const items = ROULETTES[type];
+      for (let i=0;i<count;i++){
         const result = pickWeighted(items);
-
-        $("spinResult").textContent = "결과: " + result;
+        lastEl.textContent = "결과: " + result;
+        addResultLine(listEl, result);
 
         await addDoc(collection(db, "logs"), {
           uid: user.uid,
           email: user.email || "",
-          nickname: nickname || "",
+          nickname: me.nickname || "",
           rouletteType: type,
           result,
           createdAt: serverTimestamp()
         });
-
-        setStatus("저장 완료 ✅ (" + type + ")", "ok");
-      }catch(e){
-        setStatus("룰렛/저장 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
       }
+      setStatus(`저장 완료 ✅ (${type} ${count}회)`, "ok");
+    }
+
+    $("spinNormal").addEventListener("click", async ()=>{
+      const cnt = clampInt($("cntNormal").value, 1, 200);
+      $("cntNormal").value = String(cnt);
+      await spinMany("normal", cnt, $("lastNormal"), $("listNormal"));
+    });
+    $("spinNoble").addEventListener("click", async ()=>{
+      const cnt = clampInt($("cntNoble").value, 1, 200);
+      $("cntNoble").value = String(cnt);
+      await spinMany("noble", cnt, $("lastNoble"), $("listNoble"));
+    });
+    $("spinTime").addEventListener("click", async ()=>{
+      const cnt = clampInt($("cntTime").value, 1, 200);
+      $("cntTime").value = String(cnt);
+      await spinMany("time", cnt, $("lastTime"), $("listTime"));
     });
 
     // ===== Auth state =====
     onAuthStateChanged(auth, async (user)=>{
       if (!user){
         show($("authCard"), true);
-        show($("adminOnly"), false);
         show($("btnLogout"), false);
         show($("meChip"), false);
+        show($("adminArea"), false);
+        show($("nonAdminCard"), false);
         $("meChip").textContent = "";
+        setStatus("미로그인 상태", "");
         return;
       }
 
@@ -324,26 +448,20 @@
         show($("authCard"), false);
         show($("btnLogout"), true);
         show($("meChip"), true);
-        $("meChip").textContent = (nick ? nick : user.email) + " · " + role;
+        $("meChip").textContent = `${nick || user.email} · ${role}`;
 
         if (role === "admin"){
-          show($("adminOnly"), true);
+          show($("adminArea"), true);
+          show($("nonAdminCard"), false);
           setStatus("관리자 로그인됨 ✅", "ok");
         } else {
-          show($("adminOnly"), false);
-          setStatus("로그인됨 (일반 사용자) — 관리자는 룰렛을 돌릴 수 있어요.", "ok");
+          show($("adminArea"), false);
+          show($("nonAdminCard"), true);
+          setStatus("로그인됨 (일반 사용자)", "ok");
         }
       }catch(e){
         setStatus("로그인 후 처리 실패:\n" + (e?.message || e), "err");
       }
-    });
-
-    // 혹시 모를 '하얀화면' 대비: 에러를 상태창에 표시
-    window.addEventListener("error", (ev)=>{
-      setStatus("페이지 오류:\n" + (ev?.message || ev), "err");
-    });
-    window.addEventListener("unhandledrejection", (ev)=>{
-      setStatus("비동기 오류:\n" + (ev?.reason?.message || ev?.reason || ev), "err");
     });
   </script>
 </body>
