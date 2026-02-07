@@ -25,7 +25,6 @@
     .li span{color:var(--muted);font-weight:700}
     .result{font-size:18px;font-weight:900}
     .small{font-size:12px;color:var(--muted)}
-    a{color:inherit}
   </style>
 </head>
 <body>
@@ -41,7 +40,7 @@
       <div class="row">
         <div>
           <h2>룰렛 페이지</h2>
-          <div class="muted">관리자만 전체 수정 가능 / 일반 사용자는 보기 전용</div>
+          <div class="muted">이제 저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
         </div>
         <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
       </div>
@@ -62,30 +61,31 @@
   </div>
 
 <script>
-/** ========= 공용 저장소 키 ========= */
-const LS_USER = "currentUser";       // { nickname, role }  role: 'admin' | 'user'
-const LS_LOG  = "rouletteLog";       // [{id,nickname,type,item,ts}]
-/** ========= 유저 ========= */
+/** ===== 저장 키 ===== */
+const LS_USER   = "currentUser";        // { nickname, role }
+const LS_LOG    = "rouletteLog";        // (예전 방식) [{nickname,type,item,ts...}]
+const LS_COUNT  = "rouletteCountsV1";   // (새 방식) { [nick]: { [type]: { [item]: number } } }
+const LS_MIGR   = "rouletteCountsMigratedV1"; // "1"이면 마이그 완료
+
 function getUser(){
   try { return JSON.parse(localStorage.getItem(LS_USER) || "null"); } catch { return null; }
 }
 const user = getUser();
 if(!user || !user.nickname){
-  // 너가 쓰던 로그인 페이지가 따로 있으면 그걸로 바꿔도 됨
   alert("로그인이 필요해요.");
   location.href = "index.html";
 }
 document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
-
 document.getElementById("logoutBtn").onclick = () => {
   localStorage.removeItem(LS_USER);
   location.href = "index.html";
 };
 
-/** ========= 룰렛 데이터(여기만 바꾸면 됨) =========
- * text: 표시할 항목명 (반드시 있어야 함)
- * w: 가중치(비율 숫자)
- */
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/** ===== 룰렛 데이터 (필요하면 여기만 바꾸면 됨) ===== */
 const ROULETTES = {
   normal: {
     label: "일반",
@@ -132,8 +132,6 @@ const ROULETTES = {
 };
 
 let currentType = "normal";
-
-/** ========= UI 렌더 ========= */
 const typeSeg = document.getElementById("typeSeg");
 const itemsBox = document.getElementById("itemsBox");
 
@@ -160,14 +158,10 @@ function renderItems(){
     itemsBox.innerHTML = `<div class="li"><b>-</b><span>0%</span></div>`;
   }
 }
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-
 renderTypes();
 renderItems();
 
-/** ========= 룰렛 뽑기(가중치) ========= */
+/** ===== 가중치 뽑기 ===== */
 function pickWeighted(items){
   const cleaned = items
     .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
@@ -184,40 +178,66 @@ function pickWeighted(items){
   return cleaned[cleaned.length-1] || { text:"-", w:0 };
 }
 
-/** ========= 로그 저장 ========= */
-function loadLog(){
-  try { return JSON.parse(localStorage.getItem(LS_LOG) || "[]"); } catch { return []; }
+/** ===== 카운트 저장/로드 ===== */
+function loadCounts(){
+  try { return JSON.parse(localStorage.getItem(LS_COUNT) || "{}"); } catch { return {}; }
 }
-function saveLog(list){
-  localStorage.setItem(LS_LOG, JSON.stringify(list));
+function saveCounts(obj){
+  localStorage.setItem(LS_COUNT, JSON.stringify(obj));
 }
-function addLogEntry({nickname,type,item}){
-  const list = loadLog();
-  list.push({
-    id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random().toString(16).slice(2),
-    nickname,
-    type,
-    item: String(item||"-"),   // ★ 여기서 항목이 절대 비지 않게 고정
-    ts: Date.now()
-  });
-  saveLog(list);
+function incCount(nick, type, item, delta=1){
+  const counts = loadCounts();
+  if(!counts[nick]) counts[nick] = {};
+  if(!counts[nick][type]) counts[nick][type] = {};
+  if(!counts[nick][type][item]) counts[nick][type][item] = 0;
+  counts[nick][type][item] = Math.max(0, counts[nick][type][item] + delta);
+  // 0되면 정리(깔끔하게)
+  if(counts[nick][type][item] === 0) delete counts[nick][type][item];
+  if(Object.keys(counts[nick][type]).length === 0) delete counts[nick][type];
+  if(Object.keys(counts[nick]).length === 0) delete counts[nick];
+  saveCounts(counts);
 }
 
+/** ===== (중요) 예전 로그 -> 카운트 마이그레이션 ===== */
+function migrateIfNeeded(){
+  const done = localStorage.getItem(LS_MIGR) === "1";
+  if(done) return;
+
+  const counts = loadCounts();
+  let changed = false;
+
+  let old = [];
+  try { old = JSON.parse(localStorage.getItem(LS_LOG) || "[]"); } catch { old = []; }
+
+  if(Array.isArray(old) && old.length){
+    for(const e of old){
+      const nick = (e.nickname && String(e.nickname).trim()) ? String(e.nickname).trim() : "(알수없음)";
+      const type = (e.type && String(e.type).trim()) ? String(e.type).trim() : "unknown";
+      const item = (e.item && String(e.item).trim()) ? String(e.item).trim() : "-";
+      if(!counts[nick]) counts[nick] = {};
+      if(!counts[nick][type]) counts[nick][type] = {};
+      if(!counts[nick][type][item]) counts[nick][type][item] = 0;
+      counts[nick][type][item] += 1;
+      changed = true;
+    }
+  }
+
+  if(changed) saveCounts(counts);
+  localStorage.setItem(LS_MIGR, "1"); // 마이그 1회만
+}
+migrateIfNeeded();
+
+/** ===== 스핀 버튼 ===== */
 document.getElementById("spinBtn").onclick = ()=>{
   const pack = ROULETTES[currentType];
   const picked = pickWeighted(pack.items || []);
   const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
 
   document.getElementById("resultText").textContent = `결과: ${itemText}`;
-  const dt = new Date();
-  document.getElementById("resultMeta").textContent = `${pack.label} · ${dt.toLocaleString("ko-KR")}`;
+  document.getElementById("resultMeta").textContent = `${pack.label} · ${new Date().toLocaleString("ko-KR")}`;
 
-  // ★ 저장
-  addLogEntry({
-    nickname: user.nickname,
-    type: currentType,
-    item: itemText
-  });
+  // ✅ 이제 로그가 아니라 “카운트”만 증가
+  incCount(user.nickname, currentType, itemText, 1);
 };
 </script>
 </body>
