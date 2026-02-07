@@ -8,13 +8,13 @@
     :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;}
     body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
     .top{position:sticky;top:0;background:rgba(246,247,251,.9);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
-    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
     .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
     .wrap{max-width:820px;margin:0 auto;padding:14px;}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
     .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
     .seg{display:flex;gap:8px;flex-wrap:wrap}
-    .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:800;cursor:pointer}
+    .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:900;cursor:pointer}
     .pill.on{background:#111827;color:#fff;border-color:#111827}
     h2{margin:0 0 10px;font-size:20px}
     .muted{color:var(--muted);font-size:13px}
@@ -22,7 +22,7 @@
     .li{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:#fff}
     .li:first-child{border-top:none}
     .li b{font-size:14px}
-    .li span{color:var(--muted);font-weight:700}
+    .li span{color:var(--muted);font-weight:800}
     .result{font-size:18px;font-weight:900}
     .small{font-size:12px;color:var(--muted)}
   </style>
@@ -40,7 +40,7 @@
       <div class="row">
         <div>
           <h2>룰렛 페이지</h2>
-          <div class="muted">이제 저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
+          <div class="muted">저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
         </div>
         <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
       </div>
@@ -62,30 +62,31 @@
 
 <script>
 /** ===== 저장 키 ===== */
-const LS_USER   = "currentUser";        // { nickname, role }
-const LS_LOG    = "rouletteLog";        // (예전 방식) [{nickname,type,item,ts...}]
-const LS_COUNT  = "rouletteCountsV1";   // (새 방식) { [nick]: { [type]: { [item]: number } } }
-const LS_MIGR   = "rouletteCountsMigratedV1"; // "1"이면 마이그 완료
+const LS_USER   = "currentUser";
+const LS_LOG    = "rouletteLog";           // 예전 리스트(있을 수 있음)
+const LS_COUNT  = "rouletteCountsV1";      // 새 카운트
+const LS_MIGR   = "rouletteCountsMigratedV1";
 
-function getUser(){
-  try { return JSON.parse(localStorage.getItem(LS_USER) || "null"); } catch { return null; }
-}
-const user = getUser();
+function getUser(){ try{return JSON.parse(localStorage.getItem(LS_USER)||"null")}catch{return null} }
+let user = getUser();
+
+/** ✅ 로그인 없으면 팝업 없이 바로 index로 이동 (iOS 안전) */
 if(!user || !user.nickname){
-  alert("로그인이 필요해요.");
-  location.href = "index.html";
+  location.replace("index.html");
+  throw new Error("LOGIN_REQUIRED");
 }
+
 document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
-document.getElementById("logoutBtn").onclick = () => {
+document.getElementById("logoutBtn").onclick = ()=>{
   localStorage.removeItem(LS_USER);
-  location.href = "index.html";
+  location.replace("index.html");
 };
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-/** ===== 룰렛 데이터 (필요하면 여기만 바꾸면 됨) ===== */
+/** ===== 룰렛 데이터 ===== */
 const ROULETTES = {
   normal: {
     label: "일반",
@@ -154,9 +155,6 @@ function renderItems(){
     row.innerHTML = `<b>${escapeHtml(it.text || "-")}</b><span>${Number(it.w||0)}%</span>`;
     itemsBox.appendChild(row);
   });
-  if(items.length===0){
-    itemsBox.innerHTML = `<div class="li"><b>-</b><span>0%</span></div>`;
-  }
 }
 renderTypes();
 renderItems();
@@ -166,42 +164,37 @@ function pickWeighted(items){
   const cleaned = items
     .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
     .filter(x=>x.text.length>0 && x.w>0);
-
   const total = cleaned.reduce((a,b)=>a+b.w,0);
-  if(total<=0) return { text:"-", w:0 };
-
+  if(total<=0) return { text:"-" };
   let r = Math.random()*total;
   for(const it of cleaned){
     r -= it.w;
-    if(r <= 0) return it;
+    if(r<=0) return it;
   }
-  return cleaned[cleaned.length-1] || { text:"-", w:0 };
+  return cleaned[cleaned.length-1] || { text:"-" };
 }
 
-/** ===== 카운트 저장/로드 ===== */
-function loadCounts(){
-  try { return JSON.parse(localStorage.getItem(LS_COUNT) || "{}"); } catch { return {}; }
-}
-function saveCounts(obj){
-  localStorage.setItem(LS_COUNT, JSON.stringify(obj));
-}
+/** ===== 카운트 저장 ===== */
+function loadCounts(){ try{return JSON.parse(localStorage.getItem(LS_COUNT)||"{}")}catch{return {}} }
+function saveCounts(obj){ localStorage.setItem(LS_COUNT, JSON.stringify(obj)); }
+
 function incCount(nick, type, item, delta=1){
   const counts = loadCounts();
   if(!counts[nick]) counts[nick] = {};
   if(!counts[nick][type]) counts[nick][type] = {};
   if(!counts[nick][type][item]) counts[nick][type][item] = 0;
   counts[nick][type][item] = Math.max(0, counts[nick][type][item] + delta);
-  // 0되면 정리(깔끔하게)
+
   if(counts[nick][type][item] === 0) delete counts[nick][type][item];
   if(Object.keys(counts[nick][type]).length === 0) delete counts[nick][type];
   if(Object.keys(counts[nick]).length === 0) delete counts[nick];
+
   saveCounts(counts);
 }
 
-/** ===== (중요) 예전 로그 -> 카운트 마이그레이션 ===== */
+/** ===== (자동) 예전 로그 -> 카운트 변환 1회 ===== */
 function migrateIfNeeded(){
-  const done = localStorage.getItem(LS_MIGR) === "1";
-  if(done) return;
+  if(localStorage.getItem(LS_MIGR) === "1") return;
 
   const counts = loadCounts();
   let changed = false;
@@ -223,11 +216,10 @@ function migrateIfNeeded(){
   }
 
   if(changed) saveCounts(counts);
-  localStorage.setItem(LS_MIGR, "1"); // 마이그 1회만
+  localStorage.setItem(LS_MIGR, "1");
 }
 migrateIfNeeded();
 
-/** ===== 스핀 버튼 ===== */
 document.getElementById("spinBtn").onclick = ()=>{
   const pack = ROULETTES[currentType];
   const picked = pickWeighted(pack.items || []);
@@ -236,7 +228,6 @@ document.getElementById("spinBtn").onclick = ()=>{
   document.getElementById("resultText").textContent = `결과: ${itemText}`;
   document.getElementById("resultMeta").textContent = `${pack.label} · ${new Date().toLocaleString("ko-KR")}`;
 
-  // ✅ 이제 로그가 아니라 “카운트”만 증가
   incCount(user.nickname, currentType, itemText, 1);
 };
 </script>
