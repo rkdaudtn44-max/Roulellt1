@@ -1,18 +1,133 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>룰렛</title>
-  <meta http-equiv="refresh" content="0; url=./roulette.html" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>로그인</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f6f7fb}
-    a{color:#111}
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--danger:#ef4444;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .wrap{max-width:520px;margin:0 auto;padding:18px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    h1{margin:8px 0 0;font-size:22px}
+    .muted{color:var(--muted);font-size:13px;line-height:1.4}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+    input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 12px;font-size:15px;background:#fff}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 12px;font-weight:900;cursor:pointer;width:100%}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+    .msg{margin-top:10px;font-size:13px}
+    .msg.ok{color:#16a34a}
+    .msg.bad{color:#ef4444}
+    .tiny{font-size:12px;color:var(--muted);margin-top:10px}
   </style>
 </head>
 <body>
-  <div>
-    이동 중… <a href="./roulette.html">roulette.html로 이동</a>
+  <div class="wrap">
+    <div class="card">
+      <h1>룰렛 로그인</h1>
+      <div class="muted">로그인 후 <b>roulette.html</b> / <b>log.html</b> 이용 가능</div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 8px">로그인</h2>
+      <label>아이디</label>
+      <input id="loginId" placeholder="아이디" autocomplete="username"/>
+      <label>비밀번호</label>
+      <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password"/>
+      <div style="height:12px"></div>
+      <button class="btn pri" id="loginBtn">로그인</button>
+      <div class="msg" id="loginMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 8px">회원가입</h2>
+      <label>아이디(중복 불가)</label>
+      <input id="joinId" placeholder="아이디"/>
+      <label>닉네임(중복 불가)</label>
+      <input id="joinNick" placeholder="닉네임"/>
+      <label>비밀번호</label>
+      <input id="joinPw" type="password" placeholder="비밀번호"/>
+      <div style="height:12px"></div>
+      <button class="btn" id="joinBtn">회원가입</button>
+      <div class="msg" id="joinMsg"></div>
+
+      <div class="tiny">
+        * 닉네임이 <b>도리</b>면 관리자(admin)로 자동 설정<br/>
+        * 데이터는 이 기기(브라우저) localStorage에 저장됨
+      </div>
+
+      <div style="height:12px"></div>
+      <button class="btn danger" id="wipeAllBtn">⚠️ (테스트) 전체 초기화</button>
+      <div class="msg" id="wipeMsg"></div>
+    </div>
   </div>
+
+<script>
+const LS_USERS = "usersV1";        // [{id,nickname,password,role}]
+const LS_USER  = "currentUser";    // {id,nickname,role}
+const LS_COUNT = "rouletteCountsV1";
+const LS_MIGR  = "rouletteCountsMigratedV1";
+const LS_LOG   = "rouletteLog";    // 예전 백업 로그가 남아있을 수 있음
+
+function loadUsers(){ try{return JSON.parse(localStorage.getItem(LS_USERS)||"[]")}catch{return []} }
+function saveUsers(u){ localStorage.setItem(LS_USERS, JSON.stringify(u)); }
+
+function setMsg(el, text, ok){
+  el.textContent = text || "";
+  el.className = "msg " + (ok ? "ok" : "bad");
+}
+
+function normalize(s){ return String(s||"").trim(); }
+
+document.getElementById("joinBtn").onclick = ()=>{
+  const id = normalize(document.getElementById("joinId").value);
+  const nick = normalize(document.getElementById("joinNick").value);
+  const pw = String(document.getElementById("joinPw").value||"");
+
+  const msg = document.getElementById("joinMsg");
+  if(!id || !nick || !pw) return setMsg(msg, "아이디/닉네임/비밀번호를 모두 입력해줘.", false);
+  if(id.length < 2) return setMsg(msg, "아이디는 2글자 이상이 좋아.", false);
+  if(nick.length < 1) return setMsg(msg, "닉네임을 입력해줘.", false);
+  if(pw.length < 2) return setMsg(msg, "비밀번호는 2글자 이상이 좋아.", false);
+
+  const users = loadUsers();
+  if(users.some(u => u.id === id)) return setMsg(msg, "이미 사용중인 아이디야.", false);
+  if(users.some(u => u.nickname === nick)) return setMsg(msg, "이미 사용중인 닉네임이야.", false);
+
+  const role = (nick === "도리") ? "admin" : "user";
+  users.push({ id, nickname:nick, password:pw, role });
+  saveUsers(users);
+
+  setMsg(msg, `회원가입 완료! (${role}) 이제 로그인해줘.`, true);
+};
+
+document.getElementById("loginBtn").onclick = ()=>{
+  const id = normalize(document.getElementById("loginId").value);
+  const pw = String(document.getElementById("loginPw").value||"");
+  const msg = document.getElementById("loginMsg");
+
+  const users = loadUsers();
+  const u = users.find(x => x.id === id && x.password === pw);
+  if(!u) return setMsg(msg, "아이디 또는 비밀번호가 틀렸어.", false);
+
+  localStorage.setItem(LS_USER, JSON.stringify({ id:u.id, nickname:u.nickname, role:u.role }));
+  setMsg(msg, `로그인 성공! (${u.nickname})`, true);
+
+  // 바로 룰렛으로 이동
+  location.replace("roulette.html");
+};
+
+document.getElementById("wipeAllBtn").onclick = ()=>{
+  if(!confirm("정말 전체 초기화할까요? (회원/로그/카운트 전부 삭제)")) return;
+  localStorage.removeItem(LS_USERS);
+  localStorage.removeItem(LS_USER);
+  localStorage.removeItem(LS_COUNT);
+  localStorage.removeItem(LS_MIGR);
+  localStorage.removeItem(LS_LOG);
+  setMsg(document.getElementById("wipeMsg"), "초기화 완료!", true);
+};
+</script>
 </body>
 </html>
