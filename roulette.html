@@ -7,9 +7,9 @@
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f6f7fb;color:#111}
     .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #e6e8ef}
-    .brand{display:flex;align-items:center;gap:10px;font-weight:800}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:900}
     .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6e8ef;border-radius:999px;padding:8px 10px;font-size:13px}
-    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:700}
+    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:800}
     .btn.secondary{background:#fff;color:#111}
     .wrap{max-width:860px;margin:0 auto;padding:18px}
     .card{background:#fff;border:1px solid #e6e8ef;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 20px rgba(0,0,0,.04)}
@@ -35,10 +35,10 @@
   </div>
 
   <div class="wrap">
-    <div id="statusBox" class="card">
+    <div class="card">
       <div id="statusMsg" class="msg">스크립트 로딩중…</div>
       <div class="muted" style="margin-top:8px">
-        ✅ 관리자만 룰렛을 돌릴 수 있어요. (users/{uid}.role == "admin")
+        ✅ 관리자만 룰렛을 돌릴 수 있어요. (Firestore: <b>users/{uid}.role == "admin"</b>)
       </div>
     </div>
 
@@ -56,7 +56,7 @@
         <button id="btnSignup" class="btn secondary">회원가입</button>
       </div>
       <div class="muted" style="margin-top:8px">
-        * 회원가입하면 Firestore users/{uid} 문서가 자동 생성돼요.
+        * 회원가입하면 Firestore <b>users/{uid}</b> 문서가 자동 생성돼요.
       </div>
     </div>
 
@@ -101,29 +101,27 @@
       getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, addDoc
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ✅ 너 프로젝트 스샷에 맞춰 projectId = roulette-b5455
-    // ⚠️ apiKey 등은 "네가 실제 쓰는 값"과 다르면 로그인/DB가 꼬일 수 있어.
-    //    만약 기존에 잘 되던 firebaseConfig가 있으면 그걸 여기로 그대로 바꿔 끼워줘.
+    // ✅ 네가 준 실제 firebaseConfig
     const firebaseConfig = {
-      apiKey: "PASTE_YOUR_API_KEY_HERE",
+      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
       projectId: "roulette-b5455",
-      storageBucket: "roulette-b5455.appspot.com",
-      messagingSenderId: "PASTE_YOUR_SENDER_ID_HERE",
-      appId: "PASTE_YOUR_APP_ID_HERE"
+      storageBucket: "roulette-b5455.firebasestorage.app",
+      messagingSenderId: "728191308035",
+      appId: "1:728191308035:web:b14b46c38bbe0261969936",
+      measurementId: "G-SPY41ZKXYQ"
     };
 
     // ===== UI helpers =====
     const $ = (id) => document.getElementById(id);
-    const statusMsg = $("statusMsg");
-    const statusBox = $("statusBox");
     function setStatus(text, type="") {
-      statusMsg.textContent = text;
-      statusMsg.className = "msg" + (type ? " " + type : "");
+      const el = $("statusMsg");
+      el.textContent = text;
+      el.className = "msg" + (type ? " " + type : "");
     }
     function show(el, yes){ el.classList.toggle("hidden", !yes); }
 
-    // ===== Roulette lists (네가 준 그대로 반영) =====
+    // ===== Roulette lists =====
     const ROULETTES = {
       normal: [
         { text: "냥멍체[3분]", w: 3.4 },
@@ -162,8 +160,7 @@
         { text: "이름 3번 불러주기", w: 1.7 },
         { text: "꽝", w: 12.1 }
       ],
-      // 귀족 룰렛: 너가 전에 준 1~8은 퍼센트가 확실했고, 9번 퍼센트는 너가 안 적어줬었어.
-      // 그래서 "나머지"로 자동 계산해서 넣었어. (총합 100 되게)
+      // 귀족 룰렛: (9번 퍼센트 미기재였어서 나머지 자동)
       noble: (function(){
         const base = [
           { text: "24시간 닉변권", w: 10 },
@@ -209,18 +206,19 @@
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = getFirestore(app);
-      setStatus("스크립트 로딩 완료 ✅","ok");
+      setStatus("스크립트 로딩 완료 ✅", "ok");
     }catch(e){
       setStatus("Firebase 초기화 실패:\n" + (e?.message || e), "err");
       throw e;
     }
 
-    // ===== Auth / user doc =====
+    // ===== user doc =====
     async function ensureUserDoc(user, nicknameInput=""){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
+
+      const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
       if (!snap.exists()){
-        const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
         await setDoc(ref, {
           email: user.email || "",
           nickname: nick,
@@ -228,13 +226,13 @@
           createdAt: serverTimestamp()
         }, { merge:true });
       } else {
-        // email 누락 등 보정
         await setDoc(ref, { email: user.email || "" }, { merge:true });
       }
-      return (await getDoc(ref)).data();
+      const again = await getDoc(ref);
+      return again.data() || {};
     }
 
-    async function getUserRole(user){
+    async function getUserData(user){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) return { role:"user", nickname:"" };
@@ -242,7 +240,7 @@
       return { role: data.role || "user", nickname: data.nickname || "" };
     }
 
-    // ===== UI events =====
+    // ===== Events =====
     $("btnLogin").addEventListener("click", async ()=>{
       try{
         setStatus("로그인 시도중…");
@@ -261,8 +259,10 @@
         const pw = $("pw").value;
         const nick = $("nickname").value.trim();
         if (!nick) { setStatus("회원가입은 닉네임이 필요해요.", "err"); return; }
+
         const cred = await createUserWithEmailAndPassword(auth, email, pw);
         await ensureUserDoc(cred.user, nick);
+
         setStatus("회원가입 완료 ✅", "ok");
       }catch(e){
         setStatus("회원가입 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
@@ -278,8 +278,7 @@
       if (!user) { setStatus("로그인이 필요해요.", "err"); return; }
 
       try{
-        // 관리자 확인 (실시간)
-        const { role, nickname } = await getUserRole(user);
+        const { role, nickname } = await getUserData(user);
         if (role !== "admin"){
           setStatus("관리자가 아니에요. (users/{uid}.role == \"admin\" 필요)", "err");
           return;
@@ -291,7 +290,6 @@
 
         $("spinResult").textContent = "결과: " + result;
 
-        // logs 저장
         await addDoc(collection(db, "logs"), {
           uid: user.uid,
           email: user.email || "",
@@ -338,6 +336,14 @@
       }catch(e){
         setStatus("로그인 후 처리 실패:\n" + (e?.message || e), "err");
       }
+    });
+
+    // 혹시 모를 '하얀화면' 대비: 에러를 상태창에 표시
+    window.addEventListener("error", (ev)=>{
+      setStatus("페이지 오류:\n" + (ev?.message || ev), "err");
+    });
+    window.addEventListener("unhandledrejection", (ev)=>{
+      setStatus("비동기 오류:\n" + (ev?.reason?.message || ev?.reason || ev), "err");
     });
   </script>
 </body>
