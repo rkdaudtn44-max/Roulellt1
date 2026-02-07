@@ -34,6 +34,9 @@
     .resultLine{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
     .resultLine b{font-weight:900}
     .tiny{font-size:12px;color:var(--muted)}
+    .targetBox{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .targetBox .left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .hint{font-size:12px;color:var(--muted)}
   </style>
 </head>
 <body>
@@ -54,7 +57,7 @@
       </div>
     </div>
 
-    <!-- Auth: 로그인/회원가입 "모드 전환" -->
+    <!-- Auth: 로그인/회원가입 모드 -->
     <div id="authCard" class="card">
       <div class="secTitle">
         <h3 id="authTitle">로그인</h3>
@@ -83,6 +86,22 @@
 
     <!-- Admin Only Area -->
     <div id="adminArea" class="hidden">
+
+      <!-- ✅ 대상 닉네임 입력 (예전 기능 복원) -->
+      <div class="card">
+        <div class="targetBox">
+          <div class="left">
+            <span class="chip">🎯 누구 룰렛?</span>
+            <input id="targetNickname" type="text" placeholder="예: 뿌리 (룰렛 대상 닉네임)" style="max-width:320px" />
+            <button id="btnSaveTarget" class="btn secondary">대상 저장</button>
+          </div>
+          <span class="chip" id="targetChip">대상: (미설정)</span>
+        </div>
+        <div class="hint" style="margin-top:8px">
+          * 여기 입력한 닉네임으로 기록 페이지에 저장돼요. (로그인한 관리자 닉네임이 아니라 “대상 닉네임”)
+        </div>
+      </div>
+
       <!-- 1) 기본 룰렛 -->
       <div class="card">
         <div class="secTitle">
@@ -160,7 +179,6 @@
       collection, addDoc
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ✅ 너가 준 firebaseConfig (그대로)
     const firebaseConfig = {
       apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
@@ -268,7 +286,6 @@
       line.className = "resultLine";
       line.innerHTML = `<b>${escapeHtml(text)}</b><span class="tiny">${new Date().toLocaleTimeString()}</span>`;
       listEl.prepend(line);
-      // 너무 길어지면 30개까지만
       while (listEl.children.length > 30) listEl.removeChild(listEl.lastChild);
     }
 
@@ -278,14 +295,23 @@
       }[c]));
     }
 
+    // ✅ 대상 닉네임: 페이지 새로고침해도 유지
+    const TARGET_KEY = "roulette_target_nickname";
+    function getTarget(){
+      return (localStorage.getItem(TARGET_KEY) || "").trim();
+    }
+    function setTarget(nick){
+      const v = (nick || "").trim();
+      localStorage.setItem(TARGET_KEY, v);
+      $("targetChip").textContent = "대상: " + (v || "(미설정)");
+      $("targetNickname").value = v;
+    }
+
     // ===== Firebase init =====
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-
-    // ✅ 이게 있어야 “룰렛에서 로그인하면 로그도 자동 로그인”이 안정적으로 됨
     await setPersistence(auth, browserLocalPersistence);
-
     setStatus("스크립트 로딩 완료 ✅", "ok");
 
     // ===== users/{uid} 문서 보장 =====
@@ -303,7 +329,6 @@
         return { email:user.email||"", nickname:nick, role:"user" };
       }
       const data = snap.data() || {};
-      // 보정
       if (!data.email || data.email !== (user.email||"")){
         await setDoc(ref, { email: user.email || "" }, { merge:true });
       }
@@ -320,8 +345,8 @@
       };
     }
 
-    // ===== Auth UI mode (로그인/회원가입 전환) =====
-    let mode = "login"; // login | signup
+    // ===== Auth UI mode =====
+    let mode = "login";
     function setMode(next){
       mode = next;
       $("authModePill").textContent = mode.toUpperCase();
@@ -347,11 +372,7 @@
     $("btnPrimary").addEventListener("click", async ()=>{
       const email = $("email").value.trim();
       const pw = $("pw").value;
-
-      if (!email || !pw){
-        setStatus("이메일/비밀번호를 입력해줘.", "err");
-        return;
-      }
+      if (!email || !pw){ setStatus("이메일/비밀번호를 입력해줘.", "err"); return; }
 
       try{
         if (mode === "login"){
@@ -359,37 +380,51 @@
           await signInWithEmailAndPassword(auth, email, pw);
         } else {
           const nick = $("nickname").value.trim();
-          if (!nick){
-            setStatus("회원가입은 닉네임이 필요해요.", "err");
-            return;
-          }
+          if (!nick){ setStatus("회원가입은 닉네임이 필요해요.", "err"); return; }
           setStatus("회원가입 시도중…");
           const cred = await createUserWithEmailAndPassword(auth, email, pw);
           await ensureUserDoc(cred.user, nick);
           setStatus("회원가입 완료 ✅", "ok");
         }
       }catch(e){
-        setStatus(
-          (mode === "login" ? "로그인 실패:\n" : "회원가입 실패:\n") +
-          (e?.code || "") + "\n" + (e?.message || e),
-          "err"
-        );
+        setStatus((mode==="login"?"로그인 실패:\n":"회원가입 실패:\n") + (e?.code||"") + "\n" + (e?.message||e), "err");
       }
     });
 
     $("btnLogout").addEventListener("click", async ()=>{ await signOut(auth); });
 
-    // ===== Spin handlers =====
+    // ✅ 대상 저장 버튼
+    $("btnSaveTarget").addEventListener("click", ()=>{
+      const v = $("targetNickname").value.trim();
+      setTarget(v);
+      setStatus(v ? `대상 저장됨 ✅ (${v})` : "대상이 비어있어. 닉네임을 입력해줘.", v ? "ok" : "err");
+    });
+
+    // Enter로도 저장
+    $("targetNickname").addEventListener("keydown", (e)=>{
+      if (e.key === "Enter"){
+        e.preventDefault();
+        $("btnSaveTarget").click();
+      }
+    });
+
+    // ===== Spin =====
     async function spinMany(type, count, lastEl, listEl){
       const user = auth.currentUser;
       if (!user){ setStatus("로그인이 필요해요.", "err"); return; }
 
-      // 관리자 실시간 체크
       const me = await getRole(user);
       if (me.role !== "admin"){
         setStatus("관리자가 아니에요. (users/{uid}.role == \"admin\" 필요)", "err");
         show($("adminArea"), false);
         show($("nonAdminCard"), true);
+        return;
+      }
+
+      // ✅ “대상 닉네임” 필수
+      const target = getTarget();
+      if (!target){
+        setStatus("누구 룰렛인지(대상 닉네임)를 먼저 입력/저장해줘!", "err");
         return;
       }
 
@@ -399,16 +434,19 @@
         lastEl.textContent = "결과: " + result;
         addResultLine(listEl, result);
 
+        // ✅ 여기서 nickname을 “대상 닉네임”으로 저장!
         await addDoc(collection(db, "logs"), {
-          uid: user.uid,
-          email: user.email || "",
-          nickname: me.nickname || "",
+          uid: user.uid,                 // 돌린 사람(관리자 uid)
+          adminEmail: user.email || "",  // 관리자 이메일(추적용)
+          adminNickname: me.nickname || "",
+          targetNickname: target,        // ✅ 대상
+          nickname: target,              // ✅ 기록 페이지 그룹 키(이걸로 묶임)
           rouletteType: type,
           result,
           createdAt: serverTimestamp()
         });
       }
-      setStatus(`저장 완료 ✅ (${type} ${count}회)`, "ok");
+      setStatus(`저장 완료 ✅ (${target} / ${type} ${count}회)`, "ok");
     }
 
     $("spinNormal").addEventListener("click", async ()=>{
@@ -454,6 +492,8 @@
           show($("adminArea"), true);
           show($("nonAdminCard"), false);
           setStatus("관리자 로그인됨 ✅", "ok");
+          // ✅ 로그인하면 대상칸 자동 세팅(저장돼있던 값)
+          setTarget(getTarget());
         } else {
           show($("adminArea"), false);
           show($("nonAdminCard"), true);
