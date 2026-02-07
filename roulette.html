@@ -25,6 +25,7 @@
     .li span{color:var(--muted);font-weight:800}
     .result{font-size:18px;font-weight:900}
     .small{font-size:12px;color:var(--muted)}
+
     .spinBox{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .spinCount, .nickInput{
       border:1px solid var(--line);
@@ -53,7 +54,7 @@
       <div class="row">
         <div>
           <h2>룰렛 페이지</h2>
-          <div class="muted">관리자만 돌릴 수 있고, 결과는 모든 기기에서 공유돼요(Firestore).</div>
+          <div class="muted">관리자만 룰렛을 돌릴 수 있어요. (저장은 Firestore로 공유됩니다)</div>
         </div>
 
         <div class="spinBox">
@@ -62,7 +63,9 @@
           <input class="nickInput" id="targetNick" placeholder="기록될 닉네임(관리자)" />
         </div>
       </div>
-      <div class="spinHint" id="hintText">* 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.</div>
+      <div class="spinHint" id="hintText">
+        * 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.
+      </div>
 
       <div style="height:10px"></div>
 
@@ -82,16 +85,16 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, collection, query, where, getDocs, runTransaction, increment, setDoc } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, collection, query, where, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-  // ✅ 너 Firebase 콘솔 값으로 바꿔!
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936",
+    measurementId: "G-SPY41ZKXYQ"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -103,72 +106,109 @@
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
-
   function encodeKey(s){
-    // 문서ID 안전하게 만들기 (base64url)
     const b64 = btoa(unescape(encodeURIComponent(String(s))));
     return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
 
   async function getProfile(uid){
-    const ref = doc(db, "users", uid);
-    const snap = await getDoc(ref);
-    if(!snap.exists()) return null;
-    return snap.data();
+    const snap = await getDoc(doc(db, "users", uid));
+    return snap.exists() ? snap.data() : null;
   }
-
   async function nicknameExists(nick){
-    const q = query(collection(db,"users"), where("nickname","==", nick));
+    const q = query(collection(db, "users"), where("nickname", "==", nick));
     const s = await getDocs(q);
     return !s.empty;
   }
 
-  /** ✅ 최종: 룰렛 목록/확률 반영(네가 올린 그대로) */
-  const ROULETTES = {
-    normal: { label:"일반", items:[
-      { text:"냥멍체[3분]", w:3.4 },{ text:"원하는체[3분_5글자]", w:3.4 },
-      { text:"짧은애교대사[5줄 이하]", w:1.7 },{ text:"팬보드", w:1.7 },
-      { text:"혀봉인[1분]", w:3.4 },{ text:"받침봉인[1분]", w:3.4 },
-      { text:"영 어금지[3분]", w:3.4 },{ text:"침뱉기", w:3.4 },
-      { text:"짧은팬보드[1~2줄]", w:3.4 },{ text:"실드+100", w:2.3 },
-      { text:"실드-100", w:2.3 },{ text:"ASMR방송[3분]", w:1.7 },
-      { text:"룰렛 다돌권", w:3.4 },{ text:"헬기 리액[킵x]", w:1.7 },
-      { text:"ㅇ받침체[2분]", w:3.4 },{ text:"출석체크 리액[킵x]", w:3.4 },
-      { text:"브라보[킵x]", w:3.4 },{ text:"3인칭[1분]", w:3.4 },
-      { text:"방종까지 쉴드 0개[킵x]", w:1.7 },{ text:"발박수", w:3.4 },
-      { text:"방제 변경권[10분/킵 불가]", w:1.7 },{ text:"배경사진 변경권[10분/킵 불가]", w:1.7 },
-      { text:"연하충애교도리[1분]", w:1.7 },{ text:"봉인추가", w:1.7 },
-      { text:"봉인제거", w:1.7 },{ text:"이쑤시개 리액션[킵x]", w:1.7 },
-      { text:"배통통[킵x]", w:3.4 },{ text:"공지변경권[다음 방송까지]", w:1.7 },
-      { text:"박수 3번[킵x]", w:3.4 },{ text:"투명의자 1분[킵x]", w:1.7 },
-      { text:"스쿼트 5개[킵x]", w:1.7 },{ text:"벽찍[킵x]", w:3.4 },
-      { text:"TMI 1개 올리기", w:3.4 },{ text:"이름 3번 불러주기", w:1.7 },
-      { text:"꽝", w:12.1 }
-    ]},
-    noble: { label:"귀족", items:[
-      { text:"24시간 닉변권", w:10 },{ text:"24시간 역닉변권", w:10 },
-      { text:"원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w:4 },
-      { text:"단독 박제편지", w:4 },
-      { text:"룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w:4 },
-      { text:"캐스트 저장권 2회", w:13 },
-      { text:"실드 2배", w:5 },{ text:"실드펑 2배", w:5 },
-      { text:"귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w:4 },
-      { text:"귀족룰렛 다돌권", w:10 },
-      { text:"원하는 이름으로 캐스트 저장권", w:5 },
-      { text:"원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w:4 },
-      { text:"실드 음수로 변경", w:4 },{ text:"실드 양수로 변경", w:4 },
-      { text:"게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w:4 },
-      { text:"팬보드 3개 추가", w:5 },
-      { text:"도리 용돈", w:5 }
-    ]},
-    time: { label:"시간", items:[
-      { text:"방송 연장권 +1분", w:41 },{ text:"방송 연장권 +10분", w:5 },
-      { text:"방송 연장권 +20분", w:3 },{ text:"방송 연장권 +30분", w:1 },
-      { text:"방송 단축권 -1분", w:41 },{ text:"방송 단축권 -10분", w:5 },
-      { text:"방송 단축권 -20분", w:3 },{ text:"방송 단축권 -30분", w:1 }
-    ]}
+  document.getElementById("logoutBtn").onclick = async ()=>{
+    await signOut(auth);
+    location.replace("index.html");
   };
 
+  /** ✅ 네가 올린 룰렛 목록/확률 그대로 */
+  const ROULETTES = {
+    normal: {
+      label: "일반",
+      items: [
+        { text: "냥멍체[3분]", w: 3.4 },
+        { text: "원하는체[3분_5글자]", w: 3.4 },
+        { text: "짧은애교대사[5줄 이하]", w: 1.7 },
+        { text: "팬보드", w: 1.7 },
+        { text: "혀봉인[1분]", w: 3.4 },
+        { text: "받침봉인[1분]", w: 3.4 },
+        { text: "영 어금지[3분]", w: 3.4 },
+        { text: "침뱉기", w: 3.4 },
+        { text: "짧은팬보드[1~2줄]", w: 3.4 },
+        { text: "실드+100", w: 2.3 },
+        { text: "실드-100", w: 2.3 },
+        { text: "ASMR방송[3분]", w: 1.7 },
+        { text: "룰렛 다돌권", w: 3.4 },
+        { text: "헬기 리액[킵x]", w: 1.7 },
+        { text: "ㅇ받침체[2분]", w: 3.4 },
+        { text: "출석체크 리액[킵x]", w: 3.4 },
+        { text: "브라보[킵x]", w: 3.4 },
+        { text: "3인칭[1분]", w: 3.4 },
+        { text: "방종까지 쉴드 0개[킵x]", w: 1.7 },
+        { text: "발박수", w: 3.4 },
+        { text: "방제 변경권[10분/킵 불가]", w: 1.7 },
+        { text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
+        { text: "연하충애교도리[1분]", w: 1.7 },
+        { text: "봉인추가", w: 1.7 },
+        { text: "봉인제거", w: 1.7 },
+        { text: "이쑤시개 리액션[킵x]", w: 1.7 },
+        { text: "배통통[킵x]", w: 3.4 },
+        { text: "공지변경권[다음 방송까지]", w: 1.7 },
+        { text: "박수 3번[킵x]", w: 3.4 },
+        { text: "투명의자 1분[킵x]", w: 1.7 },
+        { text: "스쿼트 5개[킵x]", w: 1.7 },
+        { text: "벽찍[킵x]", w: 3.4 },
+        { text: "TMI 1개 올리기", w: 3.4 },
+        { text: "이름 3번 불러주기", w: 1.7 },
+        { text: "꽝", w: 12.1 }
+      ]
+    },
+    noble: {
+      label: "귀족",
+      items: [
+        { text: "24시간 닉변권", w: 10 },
+        { text: "24시간 역닉변권", w: 10 },
+        { text: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w: 4 },
+        { text: "단독 박제편지", w: 4 },
+        { text: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w: 4 },
+        { text: "캐스트 저장권 2회", w: 13 },
+        { text: "실드 2배", w: 5 },
+        { text: "실드펑 2배", w: 5 },
+        { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 4 },
+        { text: "귀족룰렛 다돌권", w: 10 },
+        { text: "원하는 이름으로 캐스트 저장권", w: 5 },
+        { text: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w: 4 },
+        { text: "실드 음수로 변경", w: 4 },
+        { text: "실드 양수로 변경", w: 4 },
+        { text: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w: 4 },
+        { text: "팬보드 3개 추가", w: 5 },
+        { text: "도리 용돈", w: 5 }
+      ]
+    },
+    time: {
+      label: "시간",
+      items: [
+        { text: "방송 연장권 +1분", w: 41 },
+        { text: "방송 연장권 +10분", w: 5 },
+        { text: "방송 연장권 +20분", w: 3 },
+        { text: "방송 연장권 +30분", w: 1 },
+        { text: "방송 단축권 -1분", w: 41 },
+        { text: "방송 단축권 -10분", w: 5 },
+        { text: "방송 단축권 -20분", w: 3 },
+        { text: "방송 단축권 -30분", w: 1 }
+      ]
+    }
+  };
+
+  let profile = null;
+  let isAdmin = false;
+
+  /** UI 렌더 */
   let currentType = "normal";
   const typeSeg = $("typeSeg");
   const itemsBox = $("itemsBox");
@@ -195,6 +235,7 @@
   }
   renderTypes(); renderItems();
 
+  /** 가중치 뽑기 */
   function pickWeighted(items){
     const cleaned = items
       .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
@@ -210,24 +251,48 @@
   }
 
   function readSpinCount(){
-    let n = parseInt($("spinCount").value, 10);
+    const el = $("spinCount");
+    let n = parseInt(el.value, 10);
     if(!Number.isFinite(n) || n < 1) n = 1;
     if(n > 999) n = 999;
-    $("spinCount").value = String(n);
+    el.value = String(n);
     return n;
   }
 
+  const spinBtn = $("spinBtn");
   const nickInput = $("targetNick");
-  const hintText  = $("hintText");
-  const spinBtn   = $("spinBtn");
+  const hintText = $("hintText");
 
-  let profile = null;
-  let isAdmin = false;
+  async function getTargetNick(){
+    if(!isAdmin) return profile.nickname;
+    const v = String(nickInput.value || "").trim();
+    const target = v.length ? v : profile.nickname;
 
-  $("logoutBtn").onclick = async ()=>{
-    await signOut(auth);
-    location.replace("index.html");
-  };
+    // 오타 방지(존재하는 닉네임만 저장)
+    if(!(await nicknameExists(target))){
+      throw new Error(`존재하지 않는 닉네임: ${target}`);
+    }
+    localStorage.setItem("lastTargetNick", target);
+    return target;
+  }
+
+  async function applyDelta(nick, type, itemText, delta){
+    const itemId = encodeKey(itemText);
+    const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
+
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(itemRef);
+      if(!snap.exists()){
+        if(delta <= 0) return;
+        tx.set(itemRef, { itemText, count: delta });
+        return;
+      }
+      const cur = Number(snap.data().count || 0);
+      const next = Math.max(0, cur + delta);
+      if(next === 0) tx.delete(itemRef);
+      else tx.update(itemRef, { count: next, itemText });
+    });
+  }
 
   onAuthStateChanged(auth, async (u)=>{
     if(!u){ location.replace("index.html"); return; }
@@ -235,52 +300,20 @@
     if(!profile){ location.replace("index.html"); return; }
 
     isAdmin = (profile.role === "admin") || (String(profile.nickname).trim() === "도리");
-
     $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
 
     if(!isAdmin){
       nickInput.style.display = "none";
-      spinBtn.disabled = true;                       // ✅ 일반유저 룰렛 버튼 OFF
+      spinBtn.disabled = true;
       hintText.textContent = "* 일반 유저는 룰렛을 돌릴 수 없어요. (기록 보기만 가능)";
     } else {
+      nickInput.style.display = "";
+      spinBtn.disabled = false;
       const last = localStorage.getItem("lastTargetNick") || "";
       nickInput.value = last;
       hintText.textContent = "* (관리자) 기록될 닉네임을 입력하고 돌리면 그 사람 기록으로 저장돼요.";
     }
   });
-
-  async function getTargetNick(){
-    const v = String(nickInput.value || "").trim();
-    const target = v.length ? v : profile.nickname;
-    localStorage.setItem("lastTargetNick", target);
-
-    // ✅ 오타 닉네임 방지: 존재하는 닉네임만 저장되게
-    if(!(await nicknameExists(target))){
-      throw new Error(`존재하지 않는 닉네임: ${target}`);
-    }
-    return target;
-  }
-
-  async function incCountFS(nick, type, itemText, delta){
-    const itemId = encodeKey(itemText);
-    const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
-
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(itemRef);
-      if(!snap.exists()){
-        if(delta < 0) return;
-        tx.set(itemRef, { itemText, count: delta });
-        return;
-      }
-      const cur = snap.data().count || 0;
-      const next = Math.max(0, cur + delta);
-      if(next === 0){
-        tx.delete(itemRef);
-      }else{
-        tx.update(itemRef, { count: next, itemText });
-      }
-    });
-  }
 
   spinBtn.onclick = async ()=>{
     try{
@@ -294,15 +327,22 @@
 
       spinBtn.disabled = true;
 
+      // ✅ 999회도 빠르게: 먼저 결과를 로컬에서 집계하고, 항목별로 한 번씩만 트랜잭션
+      const pack = ROULETTES[currentType];
+      const tally = new Map(); // itemText -> count
       let lastItem = "-";
+
       for(let i=0;i<n;i++){
-        const pack = ROULETTES[currentType];
         const picked = pickWeighted(pack.items || []);
         const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
-        await incCountFS(targetNick, currentType, itemText, 1);
+        tally.set(itemText, (tally.get(itemText)||0) + 1);
         lastItem = itemText;
 
-        if(i % 15 === 14) await new Promise(r=>setTimeout(r, 0));
+        if(i % 200 === 199) await new Promise(r=>setTimeout(r, 0));
+      }
+
+      for(const [itemText, cnt] of tally.entries()){
+        await applyDelta(targetNick, currentType, itemText, cnt);
       }
 
       $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 저장)`;
