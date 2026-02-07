@@ -7,28 +7,27 @@
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f6f7fb;color:#111}
     .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #e6e8ef}
-    .brand{display:flex;align-items:center;gap:10px;font-weight:800}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:900}
     .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6e8ef;border-radius:999px;padding:8px 10px;font-size:13px}
-    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:700}
+    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:800}
     .btn.secondary{background:#fff;color:#111}
     .wrap{max-width:860px;margin:0 auto;padding:18px}
     .card{background:#fff;border:1px solid #e6e8ef;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 20px rgba(0,0,0,.04)}
-    input{width:100%;max-width:420px;padding:12px;border-radius:12px;border:1px solid #d7dae6;font-size:16px}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .muted{color:#666;font-size:13px;line-height:1.5}
+    input{width:100%;max-width:360px;padding:12px;border-radius:12px;border:1px solid #d7dae6;font-size:16px}
     .msg{padding:10px 12px;border-radius:12px;border:1px solid #e6e8ef;background:#fafbff;font-size:14px;white-space:pre-wrap}
     .msg.err{border-color:#ffd1d1;background:#fff5f5;color:#a40000}
     .msg.ok{border-color:#c9f3d1;background:#f3fff5;color:#0f6b1a}
-
-    .accItem{border:1px solid #eef0f6;border-radius:14px;margin:10px 0;overflow:hidden}
-    .accHead{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#fbfcff;cursor:pointer}
-    .accHead b{font-size:15px}
-    .accBody{display:none;padding:12px 14px;background:#fff}
-    .accItem.open .accBody{display:block}
-
-    .logRow{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed #eef0f6}
-    .logRow:last-child{border-bottom:none}
-    .tag{font-size:12px;border:1px solid #e6e8ef;border-radius:999px;padding:4px 8px;background:#fff}
+    .muted{color:#666;font-size:13px;line-height:1.5}
+    .hidden{display:none!important}
+    .list{display:flex;flex-direction:column;gap:10px}
+    details{border:1px solid #e6e8ef;border-radius:14px;padding:10px 12px;background:#fff}
+    summary{cursor:pointer;font-weight:900;list-style:none}
+    summary::-webkit-details-marker{display:none}
+    .items{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+    .item{border:1px solid #eef0f6;border-radius:12px;padding:10px 12px;background:#fafbff}
+    .meta{font-size:12px;color:#666;margin-top:4px}
+    .pill{display:inline-flex;align-items:center;border:1px solid #e6e8ef;border-radius:999px;padding:3px 8px;font-size:12px;background:#fff;margin-right:6px}
   </style>
 </head>
 <body>
@@ -36,13 +35,21 @@
     <div class="brand">📊 룰렛 로그</div>
     <div class="row" style="gap:8px">
       <a class="btn secondary" href="./roulette.html">⬅ 룰렛 페이지</a>
-      <span id="meChip" class="chip" style="display:none"></span>
-      <button id="btnLogout" class="btn secondary" style="display:none">로그아웃</button>
+      <span id="meChip" class="chip hidden"></span>
+      <button id="btnLogout" class="btn secondary hidden">로그아웃</button>
     </div>
   </div>
 
   <div class="wrap">
     <div class="card">
+      <div id="statusMsg" class="msg">스크립트 로딩중…</div>
+      <div class="muted" style="margin-top:8px">
+        ✅ 로그인하면 내 기록(또는 관리자면 전체)을 볼 수 있어요.<br/>
+        ✅ UI: 닉네임 목록만 먼저 → 눌러서 기록 펼치는 아코디언 방식
+      </div>
+    </div>
+
+    <div id="authCard" class="card">
       <h3 style="margin:0 0 10px">로그인 / 회원가입</h3>
       <div class="row">
         <input id="email" type="email" placeholder="이메일" />
@@ -55,25 +62,30 @@
         <button id="btnLogin" class="btn">로그인</button>
         <button id="btnSignup" class="btn secondary">회원가입</button>
       </div>
-      <div id="status" class="msg" style="margin-top:12px">스크립트 로딩중…</div>
       <div class="muted" style="margin-top:8px">
-        ✅ 로그인하면 내 기록(또는 관리자면 전체)을 볼 수 있어요.
+        * 회원가입하면 Firestore <b>users/{uid}</b> 문서가 자동 생성돼요.
       </div>
     </div>
 
-    <div id="logsCard" class="card" style="display:none">
+    <div id="controls" class="card hidden">
       <div class="row" style="justify-content:space-between">
         <div>
-          <h3 style="margin:0">기록</h3>
-          <div class="muted" id="scopeText">불러오는 중…</div>
+          <div style="font-weight:900;font-size:18px">기록</div>
+          <div class="muted">아직 기록이 없으면 “아직 기록이 없어요.”로 표시돼요.</div>
         </div>
         <div class="row">
-          <input id="search" placeholder="닉네임 검색" />
-          <button id="btnRefresh" class="btn secondary">새로고침</button>
+          <input id="search" type="text" placeholder="검색 (닉네임/결과/룰렛종류)" />
+          <button id="btnReload" class="btn secondary">새로고침</button>
         </div>
       </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnDeleteAll" class="btn secondary hidden">🧪 전체 삭제(테스트)</button>
+        <span class="muted">* 전체 삭제는 관리자에게만 보임</span>
+      </div>
+    </div>
 
-      <div id="list" style="margin-top:12px"></div>
+    <div id="listCard" class="card hidden">
+      <div id="list" class="list"></div>
     </div>
   </div>
 
@@ -84,35 +96,43 @@
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
     import {
       getFirestore, doc, getDoc, setDoc, serverTimestamp,
-      collection, getDocs, query, orderBy
+      collection, getDocs, query, where, orderBy, limit, deleteDoc
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
-      apiKey: "PASTE_YOUR_API_KEY_HERE",
+      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
       projectId: "roulette-b5455",
-      storageBucket: "roulette-b5455.appspot.com",
-      messagingSenderId: "PASTE_YOUR_SENDER_ID_HERE",
-      appId: "PASTE_YOUR_APP_ID_HERE"
+      storageBucket: "roulette-b5455.firebasestorage.app",
+      messagingSenderId: "728191308035",
+      appId: "1:728191308035:web:b14b46c38bbe0261969936",
+      measurementId: "G-SPY41ZKXYQ"
     };
 
-    const $ = (id)=>document.getElementById(id);
-    const status = $("status");
-
+    const $ = (id) => document.getElementById(id);
     function setStatus(text, type=""){
-      status.textContent = text;
-      status.className = "msg" + (type ? " " + type : "");
+      const el = $("statusMsg");
+      el.textContent = text;
+      el.className = "msg" + (type ? " " + type : "");
     }
+    function show(el, yes){ el.classList.toggle("hidden", !yes); }
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    let app, auth, db;
+    try{
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+      setStatus("스크립트 로딩 완료 ✅", "ok");
+    }catch(e){
+      setStatus("Firebase 초기화 실패:\n" + (e?.message || e), "err");
+      throw e;
+    }
 
     async function ensureUserDoc(user, nicknameInput=""){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
+      const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
       if (!snap.exists()){
-        const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
         await setDoc(ref, {
           email: user.email || "",
           nickname: nick,
@@ -122,15 +142,31 @@
       } else {
         await setDoc(ref, { email: user.email || "" }, { merge:true });
       }
-      return (await getDoc(ref)).data();
+      const again = await getDoc(ref);
+      return again.data() || {};
     }
 
-    async function getUserRole(user){
+    async function getUserData(user){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) return { role:"user", nickname:"" };
-      const d = snap.data() || {};
-      return { role: d.role || "user", nickname: d.nickname || "" };
+      const data = snap.data() || {};
+      return { role: data.role || "user", nickname: data.nickname || "" };
+    }
+
+    function fmtTime(ts){
+      try{
+        if (!ts) return "";
+        // serverTimestamp는 로딩 시 null일 수 있음
+        const d = ts.toDate ? ts.toDate() : null;
+        if (!d) return "";
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth()+1).padStart(2,"0");
+        const dd = String(d.getDate()).padStart(2,"0");
+        const hh = String(d.getHours()).padStart(2,"0");
+        const mi = String(d.getMinutes()).padStart(2,"0");
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+      }catch{ return ""; }
     }
 
     function typeLabel(t){
@@ -140,162 +176,226 @@
       return t || "-";
     }
 
-    function fmtDate(ts){
-      try{
-        const d = ts?.toDate ? ts.toDate() : null;
-        if (!d) return "";
-        const y=d.getFullYear();
-        const m=String(d.getMonth()+1).padStart(2,"0");
-        const dd=String(d.getDate()).padStart(2,"0");
-        const hh=String(d.getHours()).padStart(2,"0");
-        const mm=String(d.getMinutes()).padStart(2,"0");
-        return `${y}-${m}-${dd} ${hh}:${mm}`;
-      }catch{ return ""; }
+    function groupByNickname(logs){
+      const map = new Map();
+      for (const l of logs){
+        const nick = (l.nickname || l.email || l.uid || "unknown");
+        if (!map.has(nick)) map.set(nick, []);
+        map.get(nick).push(l);
+      }
+      // 최신순 정렬(클라)
+      for (const [k, arr] of map.entries()){
+        arr.sort((a,b)=>{
+          const aa = a.createdAt?.seconds || 0;
+          const bb = b.createdAt?.seconds || 0;
+          return bb - aa;
+        });
+      }
+      // 그룹도 최신순(첫 기록 기준)
+      const entries = Array.from(map.entries());
+      entries.sort((a,b)=>{
+        const aa = a[1][0]?.createdAt?.seconds || 0;
+        const bb = b[1][0]?.createdAt?.seconds || 0;
+        return bb - aa;
+      });
+      return entries;
+    }
+
+    function render(logs, isAdmin){
+      const qtxt = $("search").value.trim().toLowerCase();
+      const filtered = logs.filter(l=>{
+        if (!qtxt) return true;
+        const hay = `${l.nickname||""} ${l.email||""} ${l.result||""} ${typeLabel(l.rouletteType)||""}`.toLowerCase();
+        return hay.includes(qtxt);
+      });
+
+      const list = $("list");
+      list.innerHTML = "";
+
+      if (filtered.length === 0){
+        const div = document.createElement("div");
+        div.className = "msg";
+        div.textContent = "아직 기록이 없어요.";
+        list.appendChild(div);
+        return;
+      }
+
+      const groups = groupByNickname(filtered);
+
+      for (const [nick, arr] of groups){
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = `${nick} (${arr.length})`;
+        details.appendChild(summary);
+
+        const items = document.createElement("div");
+        items.className = "items";
+
+        for (const l of arr){
+          const it = document.createElement("div");
+          it.className = "item";
+
+          const pill1 = document.createElement("span");
+          pill1.className = "pill";
+          pill1.textContent = typeLabel(l.rouletteType);
+
+          const pill2 = document.createElement("span");
+          pill2.className = "pill";
+          pill2.textContent = fmtTime(l.createdAt) || "-";
+
+          const main = document.createElement("div");
+          main.style.fontWeight = "900";
+          main.textContent = l.result || "-";
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = isAdmin ? `uid: ${l.uid || "-"} / email: ${l.email || "-"}` : "";
+
+          it.appendChild(pill1);
+          it.appendChild(pill2);
+          it.appendChild(main);
+          if (isAdmin) it.appendChild(meta);
+
+          items.appendChild(it);
+        }
+
+        details.appendChild(items);
+        list.appendChild(details);
+      }
     }
 
     async function loadLogs(){
       const user = auth.currentUser;
       if (!user) return;
 
-      const { role, nickname } = await getUserRole(user);
+      const { role } = await getUserData(user);
+      const isAdmin = role === "admin";
 
-      $("logsCard").style.display = "block";
-      $("meChip").style.display = "inline-flex";
-      $("btnLogout").style.display = "inline-block";
-      $("meChip").textContent = (nickname || user.email) + " · " + role;
+      setStatus("로그 불러오는 중…");
+      let logs = [];
 
-      $("scopeText").textContent = role === "admin"
-        ? "관리자: 전체 기록을 보여줘요."
-        : "일반 사용자: 내 기록만 보여줘요.";
-
-      // 전체 로그 가져오기(간단 버전). 데이터가 커지면 페이지네이션 해야 함.
-      setStatus("기록 불러오는 중…");
-      const qy = query(collection(db, "logs"), orderBy("createdAt", "desc"));
-      const snap = await getDocs(qy);
-      const rows = [];
-      snap.forEach(docu => rows.push({ id: docu.id, ...docu.data() }));
-
-      // 권한 필터
-      const filtered = (role === "admin") ? rows : rows.filter(r => r.uid === user.uid);
-
-      // 닉네임별 그룹
-      const byNick = new Map();
-      for (const r of filtered){
-        const nick = (r.nickname || "(닉네임없음)");
-        if (!byNick.has(nick)) byNick.set(nick, []);
-        byNick.get(nick).push(r);
-      }
-
-      render(byNick);
-      setStatus("불러오기 완료 ✅", "ok");
-    }
-
-    function render(byNick){
-      const keyword = $("search").value.trim();
-      const list = $("list");
-      list.innerHTML = "";
-
-      const nicks = Array.from(byNick.keys()).sort((a,b)=>a.localeCompare(b,"ko"));
-      const shown = keyword ? nicks.filter(n=>n.includes(keyword)) : nicks;
-
-      if (shown.length === 0){
-        list.innerHTML = '<div class="muted" style="padding:10px 0">아직 기록이 없어요.</div>';
-        return;
-      }
-
-      for (const nick of shown){
-        const items = byNick.get(nick) || [];
-        const wrap = document.createElement("div");
-        wrap.className = "accItem";
-
-        const head = document.createElement("div");
-        head.className = "accHead";
-        head.innerHTML = `<b>${escapeHtml(nick)}</b><span class="tag">${items.length}개</span>`;
-        head.addEventListener("click", ()=>wrap.classList.toggle("open"));
-
-        const body = document.createElement("div");
-        body.className = "accBody";
-
-        // 기록 렌더
-        for (const r of items){
-          const row = document.createElement("div");
-          row.className = "logRow";
-          row.innerHTML = `
-            <div>
-              <span class="tag">${typeLabel(r.rouletteType)}</span>
-              <span style="margin-left:8px;font-weight:700">${escapeHtml(r.result || "-")}</span>
-              <div class="muted" style="margin-top:4px">${escapeHtml(r.email || "")}</div>
-            </div>
-            <div class="muted" style="white-space:nowrap">${fmtDate(r.createdAt)}</div>
-          `;
-          body.appendChild(row);
+      try{
+        if (isAdmin){
+          // 최신 500개 (createdAt 기준 단일 인덱스라 보통 문제 없음)
+          const q1 = query(collection(db, "logs"), orderBy("createdAt","desc"), limit(500));
+          const snap = await getDocs(q1);
+          logs = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        } else {
+          // 내 uid만: 인덱스 문제 피하려고 orderBy 없이 가져와서 JS로 정렬
+          const q2 = query(collection(db, "logs"), where("uid","==", user.uid), limit(500));
+          const snap = await getDocs(q2);
+          logs = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+          logs.sort((a,b)=>((b.createdAt?.seconds||0) - (a.createdAt?.seconds||0)));
         }
 
-        wrap.appendChild(head);
-        wrap.appendChild(body);
-        list.appendChild(wrap);
+        show($("listCard"), true);
+        render(logs, isAdmin);
+        setStatus(isAdmin ? "관리자: 전체 로그 표시 ✅" : "내 로그 표시 ✅", "ok");
+      }catch(e){
+        setStatus("로그 불러오기 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
       }
     }
 
-    function escapeHtml(s){
-      return String(s||"")
-        .replaceAll("&","&amp;")
-        .replaceAll("<","&lt;")
-        .replaceAll(">","&gt;")
-        .replaceAll('"',"&quot;")
-        .replaceAll("'","&#039;");
-    }
-
+    // Auth buttons
     $("btnLogin").addEventListener("click", async ()=>{
       try{
         setStatus("로그인 시도중…");
         await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pw").value);
       }catch(e){
-        setStatus("로그인 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err");
+        setStatus("로그인 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
       }
     });
 
     $("btnSignup").addEventListener("click", async ()=>{
       try{
         setStatus("회원가입 시도중…");
+        const email = $("email").value.trim();
+        const pw = $("pw").value;
         const nick = $("nickname").value.trim();
         if (!nick) { setStatus("회원가입은 닉네임이 필요해요.", "err"); return; }
-        const cred = await createUserWithEmailAndPassword(auth, $("email").value.trim(), $("pw").value);
+        const cred = await createUserWithEmailAndPassword(auth, email, pw);
         await ensureUserDoc(cred.user, nick);
         setStatus("회원가입 완료 ✅", "ok");
       }catch(e){
-        setStatus("회원가입 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err");
+        setStatus("회원가입 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
       }
     });
 
-    $("btnLogout").addEventListener("click", async ()=>{ await signOut(auth); });
+    $("btnLogout").addEventListener("click", async ()=>{
+      await signOut(auth);
+    });
 
-    $("btnRefresh").addEventListener("click", loadLogs);
-    $("search").addEventListener("input", ()=>{ /* 실시간 필터는 loadLogs 후 render에서 */ });
+    $("btnReload").addEventListener("click", loadLogs);
+    $("search").addEventListener("input", loadLogs);
 
-    onAuthStateChanged(auth, async (user)=>{
-      if (!user){
-        $("logsCard").style.display = "none";
-        $("meChip").style.display = "none";
-        $("btnLogout").style.display = "none";
-        $("list").innerHTML = "";
-        setStatus("상태: 미로그인");
+    // 🧪 전체 삭제(테스트): 관리자만 보이게 + 실제 삭제
+    $("btnDeleteAll").addEventListener("click", async ()=>{
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const { role } = await getUserData(user);
+      if (role !== "admin"){
+        setStatus("관리자만 전체 삭제 가능", "err");
         return;
       }
-      try{
-        await ensureUserDoc(user, $("nickname").value.trim());
-        await loadLogs();
 
-        // 검색창 입력 반영 위해 byNick을 다시 만들지 않으려면 refresh 버튼 사용 권장
-        $("search").addEventListener("input", async ()=>{
-          await loadLogs();
-        });
+      if (!confirm("진짜로 logs 전체 삭제할까? (테스트용)")) return;
+
+      try{
+        setStatus("전체 삭제 진행중…");
+        // 1회에 200개씩 지움
+        while (true){
+          const q1 = query(collection(db, "logs"), limit(200));
+          const snap = await getDocs(q1);
+          if (snap.empty) break;
+          for (const d of snap.docs){
+            await deleteDoc(d.ref);
+          }
+        }
+        setStatus("전체 삭제 완료 ✅", "ok");
+        await loadLogs();
       }catch(e){
-        setStatus("로그인 후 처리 실패:\n" + (e?.message||e), "err");
+        setStatus("전체 삭제 실패:\n" + (e?.code || "") + "\n" + (e?.message || e), "err");
       }
     });
 
-    setStatus("스크립트 로딩 완료 ✅", "ok");
+    // Auth state
+    onAuthStateChanged(auth, async (user)=>{
+      if (!user){
+        show($("authCard"), true);
+        show($("controls"), false);
+        show($("btnLogout"), false);
+        show($("meChip"), false);
+        show($("listCard"), false);
+        $("meChip").textContent = "";
+        return;
+      }
+
+      try{
+        const data = await ensureUserDoc(user, $("nickname").value.trim());
+        const role = data.role || "user";
+        const nick = data.nickname || "";
+
+        show($("authCard"), false);
+        show($("controls"), true);
+        show($("btnLogout"), true);
+        show($("meChip"), true);
+        $("meChip").textContent = (nick ? nick : user.email) + " · " + role;
+
+        show($("btnDeleteAll"), role === "admin");
+
+        await loadLogs();
+      }catch(e){
+        setStatus("로그인 후 처리 실패:\n" + (e?.message || e), "err");
+      }
+    });
+
+    window.addEventListener("error", (ev)=>{
+      setStatus("페이지 오류:\n" + (ev?.message || ev), "err");
+    });
+    window.addEventListener("unhandledrejection", (ev)=>{
+      setStatus("비동기 오류:\n" + (ev?.reason?.message || ev?.reason || ev), "err");
+    });
   </script>
 </body>
 </html>
