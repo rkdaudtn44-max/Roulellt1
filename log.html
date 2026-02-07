@@ -21,6 +21,7 @@
     .panel{margin-top:10px;display:none}
     .panel.on{display:block}
 
+    /* ✅ 표 */
     .table{border:1px solid var(--line);border-radius:14px;overflow:hidden}
     .tr{display:grid;grid-template-columns:1fr 90px 120px;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:#fff;align-items:center}
     .tr:first-child{border-top:none;background:#f9fafb;font-weight:900}
@@ -29,6 +30,26 @@
     .mini{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;font-weight:900;cursor:pointer}
     .mini:disabled{opacity:.4;cursor:not-allowed}
     .small{font-size:12px;color:var(--muted)}
+
+    /* ✅ 추가: 항목 행들을 2열 그리드로 배치(화면 넓을 때) */
+    .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
+    @media (min-width: 740px){
+      .rowsGrid{grid-template-columns:1fr 1fr;}
+    }
+    .itemCard{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:#fff;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .itemLeft b{display:block;font-size:14px}
+    .itemLeft .small{margin-top:4px}
+    .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
+    .itemRight{display:flex;gap:8px}
   </style>
 </head>
 <body>
@@ -65,15 +86,12 @@ const LS_MIGR  = "rouletteCountsMigratedV1";
 
 function getUser(){ try{return JSON.parse(localStorage.getItem(LS_USER)||"null")}catch{return null} }
 let user = getUser();
-
-/** ✅ 로그인 없으면 바로 index로 */
 if(!user || !user.nickname){
   location.replace("index.html");
   throw new Error("LOGIN_REQUIRED");
 }
 
 const isAdmin = (user.role === "admin");
-
 document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
 document.getElementById("modeText").textContent =
   isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
@@ -139,11 +157,8 @@ function incCount(nick, type, item, delta){
 
 function render(){
   const counts = loadCounts();
-
-  // 보여줄 닉네임
   const nickList = isAdmin ? Object.keys(counts) : Object.keys(counts).filter(n => n === user.nickname);
 
-  // 총합 계산
   let total = 0;
   for(const n of nickList){
     const byType = counts[n] || {};
@@ -190,9 +205,10 @@ function render(){
     const panel = card.querySelector(".panel");
     card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
 
-    const table = document.createElement("div");
-    table.className = "table";
-    table.innerHTML = `
+    // ✅ 헤더(기존 표 느낌 유지)
+    const headTable = document.createElement("div");
+    headTable.className = "table";
+    headTable.innerHTML = `
       <div class="tr">
         <div>항목 이름</div>
         <div class="tdRight">수량</div>
@@ -200,44 +216,45 @@ function render(){
       </div>
     `;
 
+    // ✅ 본문은 2열 카드 그리드
+    const grid = document.createElement("div");
+    grid.className = "rowsGrid";
+
     if(rows.length === 0){
-      table.innerHTML += `<div class="tr"><div class="muted">항목이 없어요</div><div></div><div></div></div>`;
+      grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
     } else {
       for(const r of rows){
-        const tr = document.createElement("div");
-        tr.className = "tr";
-        tr.innerHTML = `
-          <div>
+        const item = document.createElement("div");
+        item.className = "itemCard";
+        item.innerHTML = `
+          <div class="itemLeft">
             <b>${escapeHtml(r.item)}</b>
             <div class="small">${escapeHtml(r.type)}</div>
           </div>
-          <div class="tdRight"><b>${r.v}</b></div>
-          <div class="tdRight">
-            <div class="miniBtns">
-              <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
-              <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
-            </div>
+          <div class="itemMid">${r.v}</div>
+          <div class="itemRight">
+            <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
+            <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
           </div>
         `;
-
-        tr.querySelector('[data-act="plus"]').onclick = (ev)=>{
+        item.querySelector('[data-act="plus"]').onclick = (ev)=>{
           ev.stopPropagation();
           if(!isAdmin) return;
           incCount(nick, r.type, r.item, +1);
           render();
         };
-        tr.querySelector('[data-act="minus"]').onclick = (ev)=>{
+        item.querySelector('[data-act="minus"]').onclick = (ev)=>{
           ev.stopPropagation();
           if(!isAdmin) return;
           incCount(nick, r.type, r.item, -1);
           render();
         };
-
-        table.appendChild(tr);
+        grid.appendChild(item);
       }
     }
 
-    panel.appendChild(table);
+    panel.appendChild(headTable);
+    panel.appendChild(grid);
     accBox.appendChild(card);
   }
 }
