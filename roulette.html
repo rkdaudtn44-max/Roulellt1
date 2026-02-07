@@ -85,7 +85,8 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, collection, query, where, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  // ✅ setDoc, serverTimestamp 추가!
+  import { getFirestore, doc, getDoc, collection, query, where, getDocs, runTransaction, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
@@ -126,83 +127,49 @@
     location.replace("index.html");
   };
 
-  /** ✅ 네가 올린 룰렛 목록/확률 그대로 */
+  /** ✅ 룰렛 목록/확률 그대로 */
   const ROULETTES = {
-    normal: {
-      label: "일반",
-      items: [
-        { text: "냥멍체[3분]", w: 3.4 },
-        { text: "원하는체[3분_5글자]", w: 3.4 },
-        { text: "짧은애교대사[5줄 이하]", w: 1.7 },
-        { text: "팬보드", w: 1.7 },
-        { text: "혀봉인[1분]", w: 3.4 },
-        { text: "받침봉인[1분]", w: 3.4 },
-        { text: "영 어금지[3분]", w: 3.4 },
-        { text: "침뱉기", w: 3.4 },
-        { text: "짧은팬보드[1~2줄]", w: 3.4 },
-        { text: "실드+100", w: 2.3 },
-        { text: "실드-100", w: 2.3 },
-        { text: "ASMR방송[3분]", w: 1.7 },
-        { text: "룰렛 다돌권", w: 3.4 },
-        { text: "헬기 리액[킵x]", w: 1.7 },
-        { text: "ㅇ받침체[2분]", w: 3.4 },
-        { text: "출석체크 리액[킵x]", w: 3.4 },
-        { text: "브라보[킵x]", w: 3.4 },
-        { text: "3인칭[1분]", w: 3.4 },
-        { text: "방종까지 쉴드 0개[킵x]", w: 1.7 },
-        { text: "발박수", w: 3.4 },
-        { text: "방제 변경권[10분/킵 불가]", w: 1.7 },
-        { text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
-        { text: "연하충애교도리[1분]", w: 1.7 },
-        { text: "봉인추가", w: 1.7 },
-        { text: "봉인제거", w: 1.7 },
-        { text: "이쑤시개 리액션[킵x]", w: 1.7 },
-        { text: "배통통[킵x]", w: 3.4 },
-        { text: "공지변경권[다음 방송까지]", w: 1.7 },
-        { text: "박수 3번[킵x]", w: 3.4 },
-        { text: "투명의자 1분[킵x]", w: 1.7 },
-        { text: "스쿼트 5개[킵x]", w: 1.7 },
-        { text: "벽찍[킵x]", w: 3.4 },
-        { text: "TMI 1개 올리기", w: 3.4 },
-        { text: "이름 3번 불러주기", w: 1.7 },
-        { text: "꽝", w: 12.1 }
-      ]
-    },
-    noble: {
-      label: "귀족",
-      items: [
-        { text: "24시간 닉변권", w: 10 },
-        { text: "24시간 역닉변권", w: 10 },
-        { text: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w: 4 },
-        { text: "단독 박제편지", w: 4 },
-        { text: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w: 4 },
-        { text: "캐스트 저장권 2회", w: 13 },
-        { text: "실드 2배", w: 5 },
-        { text: "실드펑 2배", w: 5 },
-        { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 4 },
-        { text: "귀족룰렛 다돌권", w: 10 },
-        { text: "원하는 이름으로 캐스트 저장권", w: 5 },
-        { text: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w: 4 },
-        { text: "실드 음수로 변경", w: 4 },
-        { text: "실드 양수로 변경", w: 4 },
-        { text: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w: 4 },
-        { text: "팬보드 3개 추가", w: 5 },
-        { text: "도리 용돈", w: 5 }
-      ]
-    },
-    time: {
-      label: "시간",
-      items: [
-        { text: "방송 연장권 +1분", w: 41 },
-        { text: "방송 연장권 +10분", w: 5 },
-        { text: "방송 연장권 +20분", w: 3 },
-        { text: "방송 연장권 +30분", w: 1 },
-        { text: "방송 단축권 -1분", w: 41 },
-        { text: "방송 단축권 -10분", w: 5 },
-        { text: "방송 단축권 -20분", w: 3 },
-        { text: "방송 단축권 -30분", w: 1 }
-      ]
-    }
+    normal: { label: "일반", items: [
+      { text: "냥멍체[3분]", w: 3.4 },{ text: "원하는체[3분_5글자]", w: 3.4 },
+      { text: "짧은애교대사[5줄 이하]", w: 1.7 },{ text: "팬보드", w: 1.7 },
+      { text: "혀봉인[1분]", w: 3.4 },{ text: "받침봉인[1분]", w: 3.4 },
+      { text: "영 어금지[3분]", w: 3.4 },{ text: "침뱉기", w: 3.4 },
+      { text: "짧은팬보드[1~2줄]", w: 3.4 },{ text: "실드+100", w: 2.3 },
+      { text: "실드-100", w: 2.3 },{ text: "ASMR방송[3분]", w: 1.7 },
+      { text: "룰렛 다돌권", w: 3.4 },{ text: "헬기 리액[킵x]", w: 1.7 },
+      { text: "ㅇ받침체[2분]", w: 3.4 },{ text: "출석체크 리액[킵x]", w: 3.4 },
+      { text: "브라보[킵x]", w: 3.4 },{ text: "3인칭[1분]", w: 3.4 },
+      { text: "방종까지 쉴드 0개[킵x]", w: 1.7 },{ text: "발박수", w: 3.4 },
+      { text: "방제 변경권[10분/킵 불가]", w: 1.7 },{ text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
+      { text: "연하충애교도리[1분]", w: 1.7 },{ text: "봉인추가", w: 1.7 },
+      { text: "봉인제거", w: 1.7 },{ text: "이쑤시개 리액션[킵x]", w: 1.7 },
+      { text: "배통통[킵x]", w: 3.4 },{ text: "공지변경권[다음 방송까지]", w: 1.7 },
+      { text: "박수 3번[킵x]", w: 3.4 },{ text: "투명의자 1분[킵x]", w: 1.7 },
+      { text: "스쿼트 5개[킵x]", w: 1.7 },{ text: "벽찍[킵x]", w: 3.4 },
+      { text: "TMI 1개 올리기", w: 3.4 },{ text: "이름 3번 불러주기", w: 1.7 },
+      { text: "꽝", w: 12.1 }
+    ]},
+    noble: { label: "귀족", items: [
+      { text: "24시간 닉변권", w: 10 },{ text: "24시간 역닉변권", w: 10 },
+      { text: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w: 4 },
+      { text: "단독 박제편지", w: 4 },
+      { text: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w: 4 },
+      { text: "캐스트 저장권 2회", w: 13 },
+      { text: "실드 2배", w: 5 },{ text: "실드펑 2배", w: 5 },
+      { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 4 },
+      { text: "귀족룰렛 다돌권", w: 10 },
+      { text: "원하는 이름으로 캐스트 저장권", w: 5 },
+      { text: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w: 4 },
+      { text: "실드 음수로 변경", w: 4 },{ text: "실드 양수로 변경", w: 4 },
+      { text: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w: 4 },
+      { text: "팬보드 3개 추가", w: 5 },{ text: "도리 용돈", w: 5 }
+    ]},
+    time: { label: "시간", items: [
+      { text: "방송 연장권 +1분", w: 41 },{ text: "방송 연장권 +10분", w: 5 },
+      { text: "방송 연장권 +20분", w: 3 },{ text: "방송 연장권 +30분", w: 1 },
+      { text: "방송 단축권 -1분", w: 41 },{ text: "방송 단축권 -10분", w: 5 },
+      { text: "방송 단축권 -20분", w: 3 },{ text: "방송 단축권 -30분", w: 1 }
+    ]}
   };
 
   let profile = null;
@@ -276,21 +243,31 @@
     return target;
   }
 
+  // ✅ 핵심 수정: 부모 문서(counts/{nick}, counts/{nick}/types/{type})도 만들어서
+  // log.html에서 닉네임 목록이 뜨고 “저장 안 된 것처럼 보이는 문제”가 사라짐
   async function applyDelta(nick, type, itemText, delta){
     const itemId = encodeKey(itemText);
+
+    const nickRef = doc(db, "counts", nick);
+    const typeRef = doc(db, "counts", nick, "types", type);
     const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
 
+    // 부모 문서 표시용 생성/갱신(merge)
+    await setDoc(nickRef, { nick, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(typeRef, { type, updatedAt: serverTimestamp() }, { merge: true });
+
+    // 실제 카운트는 트랜잭션
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(itemRef);
       if(!snap.exists()){
         if(delta <= 0) return;
-        tx.set(itemRef, { itemText, count: delta });
+        tx.set(itemRef, { itemText, count: delta, updatedAt: serverTimestamp() });
         return;
       }
       const cur = Number(snap.data().count || 0);
       const next = Math.max(0, cur + delta);
       if(next === 0) tx.delete(itemRef);
-      else tx.update(itemRef, { count: next, itemText });
+      else tx.update(itemRef, { count: next, itemText, updatedAt: serverTimestamp() });
     });
   }
 
@@ -327,9 +304,8 @@
 
       spinBtn.disabled = true;
 
-      // ✅ 999회도 빠르게: 먼저 결과를 로컬에서 집계하고, 항목별로 한 번씩만 트랜잭션
       const pack = ROULETTES[currentType];
-      const tally = new Map(); // itemText -> count
+      const tally = new Map();
       let lastItem = "-";
 
       for(let i=0;i<n;i++){
