@@ -8,7 +8,7 @@
     :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;}
     body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
     .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
-    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
     .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
     .wrap{max-width:900px;margin:0 auto;padding:14px;}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
@@ -59,27 +59,43 @@
 
 <script>
 const LS_USER  = "currentUser";
-const LS_LOG   = "rouletteLog";          // 예전 로그(백업)
 const LS_COUNT = "rouletteCountsV1";
+const LS_LOG   = "rouletteLog";
 const LS_MIGR  = "rouletteCountsMigratedV1";
 
-function getUser(){
-  try { return JSON.parse(localStorage.getItem(LS_USER) || "null"); } catch { return null; }
+function getUser(){ try{return JSON.parse(localStorage.getItem(LS_USER)||"null")}catch{return null} }
+let user = getUser();
+
+/** ✅ 로그인 없으면 바로 index로 */
+if(!user || !user.nickname){
+  location.replace("index.html");
+  throw new Error("LOGIN_REQUIRED");
 }
-function loadCounts(){
-  try { return JSON.parse(localStorage.getItem(LS_COUNT) || "{}"); } catch { return {}; }
-}
-function saveCounts(obj){
-  localStorage.setItem(LS_COUNT, JSON.stringify(obj));
-}
+
+const isAdmin = (user.role === "admin");
+
+document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
+document.getElementById("modeText").textContent =
+  isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+
+document.getElementById("adminTools").style.display = isAdmin ? "block" : "none";
+document.getElementById("refreshBtn").onclick = render;
+
+document.getElementById("wipeBtn").onclick = ()=>{
+  if(!confirm("정말 카운트 데이터를 전체 삭제할까요?")) return;
+  localStorage.removeItem(LS_COUNT);
+  render();
+};
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
+function loadCounts(){ try{return JSON.parse(localStorage.getItem(LS_COUNT)||"{}")}catch{return {}} }
+function saveCounts(obj){ localStorage.setItem(LS_COUNT, JSON.stringify(obj)); }
 
-/** 예전 로그 -> 카운트 마이그 (혹시 log.html만 먼저 열어도 되게) */
+/** 예전 로그 -> 카운트 변환(혹시 log부터 열어도 되게) */
 function migrateIfNeeded(){
-  const done = localStorage.getItem(LS_MIGR) === "1";
-  if(done) return;
+  if(localStorage.getItem(LS_MIGR) === "1") return;
 
   const counts = loadCounts();
   let changed = false;
@@ -105,27 +121,7 @@ function migrateIfNeeded(){
 }
 migrateIfNeeded();
 
-const user = getUser();
-if(!user || !user.nickname){
-  alert("로그인이 필요해요.");
-  location.href = "index.html";
-}
-const isAdmin = (user.role === "admin");
-
-document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
-document.getElementById("modeText").textContent =
-  isAdmin ? "관리자 모드: 전체 카운트를 보여줘요. (+/- 가능)" : "일반 사용자 모드: 내 카운트만 보여요.";
-
-document.getElementById("adminTools").style.display = isAdmin ? "block" : "none";
-document.getElementById("refreshBtn").onclick = render;
-
-document.getElementById("wipeBtn").onclick = ()=>{
-  if(!confirm("정말 카운트 데이터를 전체 삭제할까요?")) return;
-  localStorage.removeItem(LS_COUNT);
-  render();
-};
-
-/** 관리자 +/- : counts[nick][type][item] 조정 */
+/** 관리자 +/- */
 function incCount(nick, type, item, delta){
   const counts = loadCounts();
   if(!counts[nick]) counts[nick] = {};
@@ -144,12 +140,10 @@ function incCount(nick, type, item, delta){
 function render(){
   const counts = loadCounts();
 
-  // 화면에 뿌릴 닉네임 목록
-  const nickList = isAdmin
-    ? Object.keys(counts)
-    : Object.keys(counts).filter(n => n === user.nickname);
+  // 보여줄 닉네임
+  const nickList = isAdmin ? Object.keys(counts) : Object.keys(counts).filter(n => n === user.nickname);
 
-  // 총합(건수) 계산
+  // 총합 계산
   let total = 0;
   for(const n of nickList){
     const byType = counts[n] || {};
@@ -164,7 +158,7 @@ function render(){
   accBox.innerHTML = "";
 
   const nicks = nickList.sort((a,b)=>a.localeCompare(b,"ko"));
-  if(nicks.length===0){
+  if(nicks.length === 0){
     accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
     return;
   }
@@ -172,12 +166,17 @@ function render(){
   for(const nick of nicks){
     const byType = counts[nick] || {};
 
-    // 닉네임 합계(배지)
     let nickSum = 0;
-    for(const t of Object.keys(byType)){
-      const byItem = byType[t] || {};
-      for(const it of Object.keys(byItem)) nickSum += Number(byItem[it]||0);
+    const rows = [];
+    for(const type of Object.keys(byType)){
+      const byItem = byType[type] || {};
+      for(const item of Object.keys(byItem)){
+        const v = Number(byItem[item]||0);
+        nickSum += v;
+        rows.push({ type, item, v });
+      }
     }
+    rows.sort((a,b)=>b.v-a.v);
 
     const card = document.createElement("div");
     card.className = "card";
@@ -191,17 +190,6 @@ function render(){
     const panel = card.querySelector(".panel");
     card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
 
-    // rows 만들기: type+item 별로 펼치되, 표에는 item 중심으로 보여주기
-    // 정렬: 수량 desc
-    const rows = [];
-    for(const type of Object.keys(byType)){
-      const byItem = byType[type] || {};
-      for(const item of Object.keys(byItem)){
-        rows.push({ type, item, v: Number(byItem[item]||0) });
-      }
-    }
-    rows.sort((a,b)=>b.v-a.v);
-
     const table = document.createElement("div");
     table.className = "table";
     table.innerHTML = `
@@ -212,41 +200,41 @@ function render(){
       </div>
     `;
 
-    for(const r of rows){
-      const tr = document.createElement("div");
-      tr.className = "tr";
-      tr.innerHTML = `
-        <div>
-          <b>${escapeHtml(r.item)}</b>
-          <div class="small">${escapeHtml(r.type)}</div>
-        </div>
-        <div class="tdRight"><b>${r.v}</b></div>
-        <div class="tdRight">
-          <div class="miniBtns">
-            <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
-            <button class="mini" data-act="plus"  ${isAdmin ? "" : "disabled"}>+</button>
-          </div>
-        </div>
-      `;
-
-      tr.querySelector('[data-act="plus"]').onclick = (ev)=>{
-        ev.stopPropagation();
-        if(!isAdmin) return;
-        incCount(nick, r.type, r.item, +1);
-        render();
-      };
-      tr.querySelector('[data-act="minus"]').onclick = (ev)=>{
-        ev.stopPropagation();
-        if(!isAdmin) return;
-        incCount(nick, r.type, r.item, -1);
-        render();
-      };
-
-      table.appendChild(tr);
-    }
-
     if(rows.length === 0){
       table.innerHTML += `<div class="tr"><div class="muted">항목이 없어요</div><div></div><div></div></div>`;
+    } else {
+      for(const r of rows){
+        const tr = document.createElement("div");
+        tr.className = "tr";
+        tr.innerHTML = `
+          <div>
+            <b>${escapeHtml(r.item)}</b>
+            <div class="small">${escapeHtml(r.type)}</div>
+          </div>
+          <div class="tdRight"><b>${r.v}</b></div>
+          <div class="tdRight">
+            <div class="miniBtns">
+              <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
+              <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
+            </div>
+          </div>
+        `;
+
+        tr.querySelector('[data-act="plus"]').onclick = (ev)=>{
+          ev.stopPropagation();
+          if(!isAdmin) return;
+          incCount(nick, r.type, r.item, +1);
+          render();
+        };
+        tr.querySelector('[data-act="minus"]').onclick = (ev)=>{
+          ev.stopPropagation();
+          if(!isAdmin) return;
+          incCount(nick, r.type, r.item, -1);
+          render();
+        };
+
+        table.appendChild(tr);
+      }
     }
 
     panel.appendChild(table);
