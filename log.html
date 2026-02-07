@@ -2,273 +2,258 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>룰렛 로그</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>기록</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f6f7fb;color:#111}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #e6e8ef}
-    .brand{display:flex;align-items:center;gap:10px;font-weight:900}
-    .wrap{max-width:920px;margin:0 auto;padding:18px}
-    .card{background:#fff;border:1px solid #e6e8ef;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 20px rgba(0,0,0,.04)}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .col{flex:1;min-width:240px}
-    input{width:100%;padding:12px;border-radius:12px;border:1px solid #d7dae6;font-size:16px;box-sizing:border-box}
-    .btn{border:1px solid #d7dae6;background:#111;color:#fff;border-radius:12px;padding:10px 12px;font-weight:800}
-    .btn.secondary{background:#fff;color:#111}
-    .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6e8ef;border-radius:999px;padding:8px 10px;font-size:13px}
-    .msg{padding:10px 12px;border-radius:12px;border:1px solid #e6e8ef;background:#fafbff;font-size:14px;white-space:pre-wrap}
-    .msg.err{border-color:#ffd1d1;background:#fff5f5;color:#a40000}
-    .msg.ok{border-color:#c9f3d1;background:#f3fff5;color:#0f6b1a}
-    .muted{color:#666;font-size:13px;line-height:1.5}
-    .hidden{display:none!important}
-    .accItem{border:1px solid #e6e8ef;border-radius:14px;overflow:hidden;margin:10px 0}
-    .accHead{display:flex;justify-content:space-between;align-items:center;padding:12px 12px;background:#fbfcff;font-weight:900;cursor:pointer}
-    .accBody{padding:12px 12px;border-top:1px solid #eef0f6;background:#fff}
-    .logLine{padding:10px 12px;border:1px solid #eef0f6;border-radius:12px;margin:8px 0;background:#fff}
-    .small{font-size:12px;color:#666}
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer}
+    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+    .wrap{max-width:900px;margin:0 auto;padding:14px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    h2{margin:0 0 10px;font-size:20px}
+    .muted{color:var(--muted);font-size:13px}
+
+    .accHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;cursor:pointer}
+    .accHead b{font-size:16px}
+    .badge{border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-weight:900;color:#2563eb;background:#eef2ff}
+    .panel{margin-top:10px;display:none}
+    .panel.on{display:block}
+
+    .table{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .tr{display:grid;grid-template-columns:1fr 90px 120px;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:#fff;align-items:center}
+    .tr:first-child{border-top:none;background:#f9fafb;font-weight:900}
+    .tdRight{text-align:right}
+    .miniBtns{display:flex;justify-content:flex-end;gap:8px}
+    .mini{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;font-weight:900;cursor:pointer}
+    .mini:disabled{opacity:.4;cursor:not-allowed}
+    .small{font-size:12px;color:var(--muted)}
   </style>
 </head>
 <body>
   <div class="top">
-    <div class="brand">📊 룰렛 로그</div>
-    <div class="row" style="gap:8px">
-      <a class="btn secondary" href="./roulette.html">⬅️ 룰렛 페이지</a>
-      <span id="meChip" class="chip hidden"></span>
-      <button id="btnLogout" class="btn secondary hidden">로그아웃</button>
-    </div>
+    <button class="btn" onclick="location.href='roulette.html'">← 룰렛 페이지</button>
+    <div style="flex:1"></div>
+    <div class="muted" id="who"></div>
+    <button class="btn" id="refreshBtn">새로고침</button>
   </div>
 
   <div class="wrap">
     <div class="card">
-      <div id="statusMsg" class="msg">스크립트 로딩중…</div>
-      <div class="muted" style="margin-top:8px">
-        ✅ 로그인하면 내 기록(또는 관리자면 전체)을 볼 수 있어요.
-      </div>
+      <h2>기록(항목별 카운트)</h2>
+      <div class="muted" id="modeText"></div>
+      <div style="height:10px"></div>
+      <div class="muted" id="loadState">불러오는 중…</div>
     </div>
 
-    <div id="authCard" class="card">
-      <h2 style="margin:0 0 10px">로그인 / 회원가입</h2>
-      <div class="row">
-        <div class="col"><input id="email" type="email" placeholder="이메일" /></div>
-        <div class="col"><input id="pw" type="password" placeholder="비밀번호" /></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div class="col"><input id="nickname" type="text" placeholder="닉네임(회원가입 시 필수)" /></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="btnLogin" class="btn">로그인</button>
-        <button id="btnSignup" class="btn secondary">회원가입</button>
-      </div>
-    </div>
+    <div id="accBox"></div>
 
-    <div id="main" class="hidden">
-      <div class="card">
-        <div class="row">
-          <span class="chip">🔎 검색(대상 닉네임)</span>
-          <div class="col"><input id="q" type="text" placeholder="예: 뿌리" /></div>
-          <button id="btnReload" class="btn secondary">새로고침</button>
-        </div>
-        <div class="muted" style="margin-top:8px">
-          * 목록은 “대상 닉네임” 기준으로 묶여서 보여요.
-        </div>
-      </div>
-
-      <div id="list"></div>
+    <div class="card" id="adminTools" style="display:none">
+      <h2>관리자 도구(테스트용)</h2>
+      <div class="muted">카운트 데이터 전체 삭제</div>
+      <div style="height:10px"></div>
+      <button class="btn danger" id="wipeBtn">전체 삭제</button>
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-    import {
-      getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-      signOut, setPersistence, browserLocalPersistence
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-    import {
-      getFirestore, doc, getDoc, setDoc, serverTimestamp,
-      collection, getDocs, query, orderBy
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+<script>
+const LS_USER  = "currentUser";
+const LS_LOG   = "rouletteLog";          // 예전 로그(백업)
+const LS_COUNT = "rouletteCountsV1";
+const LS_MIGR  = "rouletteCountsMigratedV1";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-      authDomain: "roulette-b5455.firebaseapp.com",
-      projectId: "roulette-b5455",
-      storageBucket: "roulette-b5455.firebasestorage.app",
-      messagingSenderId: "728191308035",
-      appId: "1:728191308035:web:b14b46c38bbe0261969936",
-      measurementId: "G-SPY41ZKXYQ"
-    };
+function getUser(){
+  try { return JSON.parse(localStorage.getItem(LS_USER) || "null"); } catch { return null; }
+}
+function loadCounts(){
+  try { return JSON.parse(localStorage.getItem(LS_COUNT) || "{}"); } catch { return {}; }
+}
+function saveCounts(obj){
+  localStorage.setItem(LS_COUNT, JSON.stringify(obj));
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 
-    const $ = (id) => document.getElementById(id);
-    const show = (el, yes) => el.classList.toggle("hidden", !yes);
-    function setStatus(text, type="") {
-      $("statusMsg").textContent = text;
-      $("statusMsg").className = "msg" + (type ? " " + type : "");
+/** 예전 로그 -> 카운트 마이그 (혹시 log.html만 먼저 열어도 되게) */
+function migrateIfNeeded(){
+  const done = localStorage.getItem(LS_MIGR) === "1";
+  if(done) return;
+
+  const counts = loadCounts();
+  let changed = false;
+
+  let old = [];
+  try { old = JSON.parse(localStorage.getItem(LS_LOG) || "[]"); } catch { old = []; }
+
+  if(Array.isArray(old) && old.length){
+    for(const e of old){
+      const nick = (e.nickname && String(e.nickname).trim()) ? String(e.nickname).trim() : "(알수없음)";
+      const type = (e.type && String(e.type).trim()) ? String(e.type).trim() : "unknown";
+      const item = (e.item && String(e.item).trim()) ? String(e.item).trim() : "-";
+      if(!counts[nick]) counts[nick] = {};
+      if(!counts[nick][type]) counts[nick][type] = {};
+      if(!counts[nick][type][item]) counts[nick][type][item] = 0;
+      counts[nick][type][item] += 1;
+      changed = true;
+    }
+  }
+
+  if(changed) saveCounts(counts);
+  localStorage.setItem(LS_MIGR, "1");
+}
+migrateIfNeeded();
+
+const user = getUser();
+if(!user || !user.nickname){
+  alert("로그인이 필요해요.");
+  location.href = "index.html";
+}
+const isAdmin = (user.role === "admin");
+
+document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
+document.getElementById("modeText").textContent =
+  isAdmin ? "관리자 모드: 전체 카운트를 보여줘요. (+/- 가능)" : "일반 사용자 모드: 내 카운트만 보여요.";
+
+document.getElementById("adminTools").style.display = isAdmin ? "block" : "none";
+document.getElementById("refreshBtn").onclick = render;
+
+document.getElementById("wipeBtn").onclick = ()=>{
+  if(!confirm("정말 카운트 데이터를 전체 삭제할까요?")) return;
+  localStorage.removeItem(LS_COUNT);
+  render();
+};
+
+/** 관리자 +/- : counts[nick][type][item] 조정 */
+function incCount(nick, type, item, delta){
+  const counts = loadCounts();
+  if(!counts[nick]) counts[nick] = {};
+  if(!counts[nick][type]) counts[nick][type] = {};
+  if(!counts[nick][type][item]) counts[nick][type][item] = 0;
+
+  counts[nick][type][item] = Math.max(0, counts[nick][type][item] + delta);
+
+  if(counts[nick][type][item] === 0) delete counts[nick][type][item];
+  if(Object.keys(counts[nick][type]).length === 0) delete counts[nick][type];
+  if(Object.keys(counts[nick]).length === 0) delete counts[nick];
+
+  saveCounts(counts);
+}
+
+function render(){
+  const counts = loadCounts();
+
+  // 화면에 뿌릴 닉네임 목록
+  const nickList = isAdmin
+    ? Object.keys(counts)
+    : Object.keys(counts).filter(n => n === user.nickname);
+
+  // 총합(건수) 계산
+  let total = 0;
+  for(const n of nickList){
+    const byType = counts[n] || {};
+    for(const t of Object.keys(byType)){
+      const byItem = byType[t] || {};
+      for(const it of Object.keys(byItem)) total += Number(byItem[it]||0);
+    }
+  }
+  document.getElementById("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${total}회)`;
+
+  const accBox = document.getElementById("accBox");
+  accBox.innerHTML = "";
+
+  const nicks = nickList.sort((a,b)=>a.localeCompare(b,"ko"));
+  if(nicks.length===0){
+    accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
+    return;
+  }
+
+  for(const nick of nicks){
+    const byType = counts[nick] || {};
+
+    // 닉네임 합계(배지)
+    let nickSum = 0;
+    for(const t of Object.keys(byType)){
+      const byItem = byType[t] || {};
+      for(const it of Object.keys(byItem)) nickSum += Number(byItem[it]||0);
     }
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    await setPersistence(auth, browserLocalPersistence);
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="accHead">
+        <b>${escapeHtml(nick)}</b>
+        <span class="badge">${nickSum}회</span>
+      </div>
+      <div class="panel"></div>
+    `;
+    const panel = card.querySelector(".panel");
+    card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
 
-    async function ensureUserDoc(user, nicknameInput=""){
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
-      if (!snap.exists()){
-        const nick = (nicknameInput || "").trim() || (user.email ? user.email.split("@")[0] : "user");
-        await setDoc(ref, {
-          email: user.email || "",
-          nickname: nick,
-          role: "user",
-          createdAt: serverTimestamp()
-        }, { merge:true });
-      } else {
-        await setDoc(ref, { email: user.email || "" }, { merge:true });
-      }
-      const again = await getDoc(ref);
-      return again.data() || {};
-    }
-
-    async function getUserData(user){
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
-      return snap.exists() ? (snap.data()||{}) : {};
-    }
-
-    $("btnLogin").addEventListener("click", async ()=>{
-      try{
-        setStatus("로그인 시도중…");
-        await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pw").value);
-      }catch(e){
-        setStatus("로그인 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err");
-      }
-    });
-
-    $("btnSignup").addEventListener("click", async ()=>{
-      try{
-        setStatus("회원가입 시도중…");
-        const nick = $("nickname").value.trim();
-        if (!nick) { setStatus("회원가입은 닉네임이 필요해요.", "err"); return; }
-        const cred = await createUserWithEmailAndPassword(auth, $("email").value.trim(), $("pw").value);
-        await ensureUserDoc(cred.user, nick);
-        setStatus("회원가입 완료 ✅", "ok");
-      }catch(e){
-        setStatus("회원가입 실패:\n" + (e?.code||"") + "\n" + (e?.message||e), "err");
-      }
-    });
-
-    $("btnLogout").addEventListener("click", async ()=>{ await signOut(auth); });
-
-    function fmtTime(ts){
-      try{
-        if (!ts) return "";
-        const d = ts.toDate ? ts.toDate() : new Date(ts);
-        return d.toLocaleString("ko-KR");
-      }catch{ return ""; }
-    }
-
-    async function loadLogs(){
-      const user = auth.currentUser;
-      if (!user) return;
-
-      const u = await getUserData(user);
-      const isAdmin = (u.role || "user") === "admin";
-
-      // logs 전체를 가져와서 화면에서 필터/그룹 (초기 버전은 간단하게)
-      const qy = query(collection(db, "logs"), orderBy("createdAt", "desc"));
-      const snap = await getDocs(qy);
-
-      const keyword = ($("q").value || "").trim();
-      const rows = [];
-      snap.forEach(docu=>{
-        const d = docu.data() || {};
-        if (!isAdmin && d.byUid !== user.uid) return; // 일반유저는 본인(룰렛 돌린 관리자 본인) 기록만
-        if (keyword && !(d.targetNickname||"").includes(keyword)) return;
-        rows.push({ id: docu.id, ...d });
-      });
-
-      // targetNickname 별 그룹
-      const groups = new Map();
-      for (const r of rows){
-        const key = r.targetNickname || "(대상없음)";
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(r);
-      }
-
-      const list = $("list");
-      list.innerHTML = "";
-
-      if (groups.size === 0){
-        list.innerHTML = `<div class="card"><div class="muted">아직 기록이 없어요.</div></div>`;
-        return;
-      }
-
-      for (const [target, items] of groups.entries()){
-        const wrap = document.createElement("div");
-        wrap.className = "accItem";
-
-        const head = document.createElement("div");
-        head.className = "accHead";
-        head.innerHTML = `<span>${target}</span><span class="chip">${items.length}건</span>`;
-
-        const body = document.createElement("div");
-        body.className = "accBody hidden";
-
-        for (const it of items){
-          const line = document.createElement("div");
-          line.className = "logLine";
-          const results = Array.isArray(it.results) ? it.results.join(" / ") : (it.result || "-");
-          line.innerHTML = `
-            <div><b>${results}</b></div>
-            <div class="small">
-              타입: ${it.rouletteType || "-"} · ${fmtTime(it.createdAt)}
-              <br/>돌린사람: ${(it.byNickname||it.byEmail||"")} 
-            </div>
-          `;
-          body.appendChild(line);
-        }
-
-        head.addEventListener("click", ()=> body.classList.toggle("hidden"));
-
-        wrap.appendChild(head);
-        wrap.appendChild(body);
-        list.appendChild(wrap);
+    // rows 만들기: type+item 별로 펼치되, 표에는 item 중심으로 보여주기
+    // 정렬: 수량 desc
+    const rows = [];
+    for(const type of Object.keys(byType)){
+      const byItem = byType[type] || {};
+      for(const item of Object.keys(byItem)){
+        rows.push({ type, item, v: Number(byItem[item]||0) });
       }
     }
+    rows.sort((a,b)=>b.v-a.v);
 
-    $("btnReload").addEventListener("click", loadLogs);
-    $("q").addEventListener("input", ()=>{
-      // 입력 중엔 가볍게 다시
-      loadLogs();
-    });
+    const table = document.createElement("div");
+    table.className = "table";
+    table.innerHTML = `
+      <div class="tr">
+        <div>항목 이름</div>
+        <div class="tdRight">수량</div>
+        <div class="tdRight">(+/-)</div>
+      </div>
+    `;
 
-    onAuthStateChanged(auth, async (user)=>{
-      if (!user){
-        show($("authCard"), true);
-        show($("btnLogout"), false);
-        show($("meChip"), false);
-        show($("main"), false);
-        setStatus("미로그인 상태", "");
-        return;
-      }
+    for(const r of rows){
+      const tr = document.createElement("div");
+      tr.className = "tr";
+      tr.innerHTML = `
+        <div>
+          <b>${escapeHtml(r.item)}</b>
+          <div class="small">${escapeHtml(r.type)}</div>
+        </div>
+        <div class="tdRight"><b>${r.v}</b></div>
+        <div class="tdRight">
+          <div class="miniBtns">
+            <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
+            <button class="mini" data-act="plus"  ${isAdmin ? "" : "disabled"}>+</button>
+          </div>
+        </div>
+      `;
 
-      try{
-        const data = await ensureUserDoc(user, $("nickname").value.trim());
-        const role = data.role || "user";
-        const nick = data.nickname || "";
+      tr.querySelector('[data-act="plus"]').onclick = (ev)=>{
+        ev.stopPropagation();
+        if(!isAdmin) return;
+        incCount(nick, r.type, r.item, +1);
+        render();
+      };
+      tr.querySelector('[data-act="minus"]').onclick = (ev)=>{
+        ev.stopPropagation();
+        if(!isAdmin) return;
+        incCount(nick, r.type, r.item, -1);
+        render();
+      };
 
-        show($("authCard"), false);
-        show($("btnLogout"), true);
-        show($("meChip"), true);
-        $("meChip").textContent = (nick ? nick : user.email) + " · " + role;
+      table.appendChild(tr);
+    }
 
-        show($("main"), true);
-        setStatus("로그인됨 ✅ 기록 불러오는 중…", "ok");
-        await loadLogs();
-        setStatus("기록 로딩 완료 ✅", "ok");
-      }catch(e){
-        setStatus("로딩 실패:\n" + (e?.message||e), "err");
-      }
-    });
-  </script>
+    if(rows.length === 0){
+      table.innerHTML += `<div class="tr"><div class="muted">항목이 없어요</div><div></div><div></div></div>`;
+    }
+
+    panel.appendChild(table);
+    accBox.appendChild(card);
+  }
+}
+render();
+</script>
 </body>
 </html>
