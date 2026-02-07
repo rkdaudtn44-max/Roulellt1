@@ -25,6 +25,21 @@
     .li span{color:var(--muted);font-weight:800}
     .result{font-size:18px;font-weight:900}
     .small{font-size:12px;color:var(--muted)}
+
+    /* ✅ 추가: 횟수 입력 UI (외관 톤 유지) */
+    .spinBox{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .spinCount{
+      width:86px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:10px 10px;
+      font-weight:900;
+      font-size:15px;
+      background:#fff;
+      text-align:center;
+    }
+    .spinHint{font-size:12px;color:var(--muted)}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
   </style>
 </head>
 <body>
@@ -40,10 +55,16 @@
       <div class="row">
         <div>
           <h2>룰렛 페이지</h2>
-          <div class="muted">저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
+          <div class="muted">이제 저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
         </div>
-        <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
+
+        <!-- ✅ 여기: 버튼 옆에 횟수 입력 -->
+        <div class="spinBox">
+          <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
+          <input class="spinCount" id="spinCount" type="number" min="1" max="999" value="1" inputmode="numeric" />
+        </div>
       </div>
+      <div class="spinHint">* 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.</div>
 
       <div style="height:10px"></div>
 
@@ -61,7 +82,6 @@
   </div>
 
 <script>
-/** ===== 저장 키 ===== */
 const LS_USER   = "currentUser";
 const LS_LOG    = "rouletteLog";           // 예전 리스트(있을 수 있음)
 const LS_COUNT  = "rouletteCountsV1";      // 새 카운트
@@ -69,8 +89,6 @@ const LS_MIGR   = "rouletteCountsMigratedV1";
 
 function getUser(){ try{return JSON.parse(localStorage.getItem(LS_USER)||"null")}catch{return null} }
 let user = getUser();
-
-/** ✅ 로그인 없으면 팝업 없이 바로 index로 이동 (iOS 안전) */
 if(!user || !user.nickname){
   location.replace("index.html");
   throw new Error("LOGIN_REQUIRED");
@@ -86,7 +104,7 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-/** ===== 룰렛 데이터 ===== */
+/** 룰렛 데이터 */
 const ROULETTES = {
   normal: {
     label: "일반",
@@ -103,7 +121,7 @@ const ROULETTES = {
       { text: "실드+100", w: 2.3 },
       { text: "실드-100", w: 2.3 },
       { text: "ASMR방송[3분]", w: 1.7 },
-      { text: "룰렛 다돌권 3", w: 1.0 }
+      { text: "룰렛 다돌권", w: 1.0 }
     ]
   },
   noble: {
@@ -159,7 +177,7 @@ function renderItems(){
 renderTypes();
 renderItems();
 
-/** ===== 가중치 뽑기 ===== */
+/** 가중치 뽑기 */
 function pickWeighted(items){
   const cleaned = items
     .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
@@ -174,7 +192,7 @@ function pickWeighted(items){
   return cleaned[cleaned.length-1] || { text:"-" };
 }
 
-/** ===== 카운트 저장 ===== */
+/** 카운트 저장 */
 function loadCounts(){ try{return JSON.parse(localStorage.getItem(LS_COUNT)||"{}")}catch{return {}} }
 function saveCounts(obj){ localStorage.setItem(LS_COUNT, JSON.stringify(obj)); }
 
@@ -192,7 +210,7 @@ function incCount(nick, type, item, delta=1){
   saveCounts(counts);
 }
 
-/** ===== (자동) 예전 로그 -> 카운트 변환 1회 ===== */
+/** 예전 로그 -> 카운트 변환 1회 */
 function migrateIfNeeded(){
   if(localStorage.getItem(LS_MIGR) === "1") return;
 
@@ -214,21 +232,44 @@ function migrateIfNeeded(){
       changed = true;
     }
   }
-
   if(changed) saveCounts(counts);
   localStorage.setItem(LS_MIGR, "1");
 }
 migrateIfNeeded();
 
-document.getElementById("spinBtn").onclick = ()=>{
-  const pack = ROULETTES[currentType];
-  const picked = pickWeighted(pack.items || []);
-  const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
+/** ✅ N회 돌리기 */
+function readSpinCount(){
+  const el = document.getElementById("spinCount");
+  let n = parseInt(el.value, 10);
+  if(!Number.isFinite(n) || n < 1) n = 1;
+  if(n > 999) n = 999;
+  el.value = String(n);
+  return n;
+}
 
-  document.getElementById("resultText").textContent = `결과: ${itemText}`;
-  document.getElementById("resultMeta").textContent = `${pack.label} · ${new Date().toLocaleString("ko-KR")}`;
+const spinBtn = document.getElementById("spinBtn");
 
-  incCount(user.nickname, currentType, itemText, 1);
+spinBtn.onclick = async ()=>{
+  const n = readSpinCount();
+  spinBtn.disabled = true;
+
+  // 빠르게 N회 저장 (UI 렉 방지용으로 아주 짧게 양보)
+  let lastItem = "-";
+  for(let i=0;i<n;i++){
+    const pack = ROULETTES[currentType];
+    const picked = pickWeighted(pack.items || []);
+    const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
+    incCount(user.nickname, currentType, itemText, 1);
+    lastItem = itemText;
+
+    // 25회마다 잠깐 양보(모바일 멈춤 방지)
+    if(i % 25 === 24) await new Promise(r=>setTimeout(r, 0));
+  }
+
+  document.getElementById("resultText").textContent = `결과: ${lastItem} (총 ${n}회 저장)`;
+  document.getElementById("resultMeta").textContent = `${ROULETTES[currentType].label} · ${new Date().toLocaleString("ko-KR")}`;
+
+  spinBtn.disabled = false;
 };
 </script>
 </body>
