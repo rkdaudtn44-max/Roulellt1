@@ -41,7 +41,7 @@
 
       <div class="note">
         • 닉네임/아이디 중복 불가<br/>
-        • 닉네임이 <b>도리</b>면 관리자 권한으로 동작(규칙에도 반영 권장)
+        • 닉네임이 <b>도리</b>면 관리자 권한
       </div>
 
       <div class="muted" id="msg" style="margin-top:12px;"></div>
@@ -51,16 +51,16 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc, query, collection, where, getDocs } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, query, collection, where, getDocs } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-  // ✅ 너 Firebase 콘솔 값으로 바꿔!
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936",
+    measurementId: "G-SPY41ZKXYQ"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -70,6 +70,7 @@
   const $ = (id)=>document.getElementById(id);
   const msg = (t)=>{ $("msg").textContent = t; };
 
+  // 아이디를 이메일 형태로 변환(실제 이메일을 강제하지 않기)
   const toEmail = (id)=> `${String(id||"").trim().toLowerCase()}@roulette.local`;
 
   async function isDuplicate(field, value){
@@ -98,13 +99,11 @@
       const nickname = $("nick").value.trim();
       if(!id || !pw || !nickname) return msg("아이디/비밀번호/닉네임을 모두 입력해줘.");
 
-      // ✅ 중복 체크(아이디/닉네임)
       if(await isDuplicate("id", id)) return msg("이미 사용 중인 아이디야.");
       if(await isDuplicate("nickname", nickname)) return msg("이미 사용 중인 닉네임이야.");
 
       const cred = await createUserWithEmailAndPassword(auth, toEmail(id), pw);
 
-      // ✅ 유저 프로필 저장
       const role = (nickname === "도리") ? "admin" : "user";
       await setDoc(doc(db, "users", cred.user.uid), { id, nickname, role });
 
