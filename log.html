@@ -9,7 +9,6 @@
     body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
     .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
     .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
-    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
     .wrap{max-width:900px;margin:0 auto;padding:14px;}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
     h2{margin:0 0 10px;font-size:20px}
@@ -21,31 +20,17 @@
     .panel{margin-top:10px;display:none}
     .panel.on{display:block}
 
-    /* ✅ 표 */
     .table{border:1px solid var(--line);border-radius:14px;overflow:hidden}
     .tr{display:grid;grid-template-columns:1fr 90px 120px;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:#fff;align-items:center}
     .tr:first-child{border-top:none;background:#f9fafb;font-weight:900}
     .tdRight{text-align:right}
-    .miniBtns{display:flex;justify-content:flex-end;gap:8px}
     .mini{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;font-weight:900;cursor:pointer}
     .mini:disabled{opacity:.4;cursor:not-allowed}
     .small{font-size:12px;color:var(--muted)}
 
-    /* ✅ 추가: 항목 행들을 2열 그리드로 배치(화면 넓을 때) */
     .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
-    @media (min-width: 740px){
-      .rowsGrid{grid-template-columns:1fr 1fr;}
-    }
-    .itemCard{
-      border:1px solid var(--line);
-      border-radius:14px;
-      padding:12px;
-      background:#fff;
-      display:flex;
-      gap:10px;
-      align-items:center;
-      justify-content:space-between;
-    }
+    @media (min-width: 740px){ .rowsGrid{grid-template-columns:1fr 1fr;} }
+    .itemCard{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:flex;gap:10px;align-items:center;justify-content:space-between;}
     .itemLeft b{display:block;font-size:14px}
     .itemLeft .small{margin-top:4px}
     .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
@@ -69,196 +54,185 @@
     </div>
 
     <div id="accBox"></div>
-
-    <div class="card" id="adminTools" style="display:none">
-      <h2>관리자 도구(테스트용)</h2>
-      <div class="muted">카운트 데이터 전체 삭제</div>
-      <div style="height:10px"></div>
-      <button class="btn danger" id="wipeBtn">전체 삭제</button>
-    </div>
   </div>
 
-<script>
-const LS_USER  = "currentUser";
-const LS_COUNT = "rouletteCountsV1";
-const LS_LOG   = "rouletteLog";
-const LS_MIGR  = "rouletteCountsMigratedV1";
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, collection, getDocs, query, where, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-function getUser(){ try{return JSON.parse(localStorage.getItem(LS_USER)||"null")}catch{return null} }
-let user = getUser();
-if(!user || !user.nickname){
-  location.replace("index.html");
-  throw new Error("LOGIN_REQUIRED");
-}
+  // ✅ 너 Firebase 콘솔 값으로 바꿔!
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
 
-const isAdmin = (user.role === "admin");
-document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
-document.getElementById("modeText").textContent =
-  isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-document.getElementById("adminTools").style.display = isAdmin ? "block" : "none";
-document.getElementById("refreshBtn").onclick = render;
+  const $ = (id)=>document.getElementById(id);
 
-document.getElementById("wipeBtn").onclick = ()=>{
-  if(!confirm("정말 카운트 데이터를 전체 삭제할까요?")) return;
-  localStorage.removeItem(LS_COUNT);
-  render();
-};
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-function loadCounts(){ try{return JSON.parse(localStorage.getItem(LS_COUNT)||"{}")}catch{return {}} }
-function saveCounts(obj){ localStorage.setItem(LS_COUNT, JSON.stringify(obj)); }
+  async function getProfile(uid){
+    const ref = doc(db, "users", uid);
+    const snap = await getDoc(ref);
+    if(!snap.exists()) return null;
+    return snap.data();
+  }
 
-/** 예전 로그 -> 카운트 변환(혹시 log부터 열어도 되게) */
-function migrateIfNeeded(){
-  if(localStorage.getItem(LS_MIGR) === "1") return;
-
-  const counts = loadCounts();
-  let changed = false;
-
-  let old = [];
-  try { old = JSON.parse(localStorage.getItem(LS_LOG) || "[]"); } catch { old = []; }
-
-  if(Array.isArray(old) && old.length){
-    for(const e of old){
-      const nick = (e.nickname && String(e.nickname).trim()) ? String(e.nickname).trim() : "(알수없음)";
-      const type = (e.type && String(e.type).trim()) ? String(e.type).trim() : "unknown";
-      const item = (e.item && String(e.item).trim()) ? String(e.item).trim() : "-";
-      if(!counts[nick]) counts[nick] = {};
-      if(!counts[nick][type]) counts[nick][type] = {};
-      if(!counts[nick][type][item]) counts[nick][type][item] = 0;
-      counts[nick][type][item] += 1;
-      changed = true;
+  async function getNickList(isAdmin, myNick){
+    if(isAdmin){
+      const snap = await getDocs(collection(db, "counts"));
+      return snap.docs.map(d=>d.id);
+    }else{
+      return [myNick];
     }
   }
 
-  if(changed) saveCounts(counts);
-  localStorage.setItem(LS_MIGR, "1");
-}
-migrateIfNeeded();
-
-/** 관리자 +/- */
-function incCount(nick, type, item, delta){
-  const counts = loadCounts();
-  if(!counts[nick]) counts[nick] = {};
-  if(!counts[nick][type]) counts[nick][type] = {};
-  if(!counts[nick][type][item]) counts[nick][type][item] = 0;
-
-  counts[nick][type][item] = Math.max(0, counts[nick][type][item] + delta);
-
-  if(counts[nick][type][item] === 0) delete counts[nick][type][item];
-  if(Object.keys(counts[nick][type]).length === 0) delete counts[nick][type];
-  if(Object.keys(counts[nick]).length === 0) delete counts[nick];
-
-  saveCounts(counts);
-}
-
-function render(){
-  const counts = loadCounts();
-  const nickList = isAdmin ? Object.keys(counts) : Object.keys(counts).filter(n => n === user.nickname);
-
-  let total = 0;
-  for(const n of nickList){
-    const byType = counts[n] || {};
-    for(const t of Object.keys(byType)){
-      const byItem = byType[t] || {};
-      for(const it of Object.keys(byItem)) total += Number(byItem[it]||0);
-    }
-  }
-  document.getElementById("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${total}회)`;
-
-  const accBox = document.getElementById("accBox");
-  accBox.innerHTML = "";
-
-  const nicks = nickList.sort((a,b)=>a.localeCompare(b,"ko"));
-  if(nicks.length === 0){
-    accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
-    return;
-  }
-
-  for(const nick of nicks){
-    const byType = counts[nick] || {};
-
-    let nickSum = 0;
+  async function getCountsForNick(nick){
+    // counts/{nick}/types/{type}/items/{itemId}
+    const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
     const rows = [];
-    for(const type of Object.keys(byType)){
-      const byItem = byType[type] || {};
-      for(const item of Object.keys(byItem)){
-        const v = Number(byItem[item]||0);
-        nickSum += v;
-        rows.push({ type, item, v });
+    for(const tDoc of typesSnap.docs){
+      const type = tDoc.id;
+      const itemsSnap = await getDocs(collection(db, "counts", nick, "types", type, "items"));
+      for(const it of itemsSnap.docs){
+        const d = it.data();
+        rows.push({ type, item: d.itemText || "-", v: Number(d.count||0), itemId: it.id });
       }
     }
     rows.sort((a,b)=>b.v-a.v);
+    return rows;
+  }
 
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `
-      <div class="accHead">
-        <b>${escapeHtml(nick)}</b>
-        <span class="badge">${nickSum}회</span>
-      </div>
-      <div class="panel"></div>
-    `;
-    const panel = card.querySelector(".panel");
-    card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
-
-    // ✅ 헤더(기존 표 느낌 유지)
-    const headTable = document.createElement("div");
-    headTable.className = "table";
-    headTable.innerHTML = `
-      <div class="tr">
-        <div>항목 이름</div>
-        <div class="tdRight">수량</div>
-        <div class="tdRight">(+/-)</div>
-      </div>
-    `;
-
-    // ✅ 본문은 2열 카드 그리드
-    const grid = document.createElement("div");
-    grid.className = "rowsGrid";
-
-    if(rows.length === 0){
-      grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
-    } else {
-      for(const r of rows){
-        const item = document.createElement("div");
-        item.className = "itemCard";
-        item.innerHTML = `
-          <div class="itemLeft">
-            <b>${escapeHtml(r.item)}</b>
-            <div class="small">${escapeHtml(r.type)}</div>
-          </div>
-          <div class="itemMid">${r.v}</div>
-          <div class="itemRight">
-            <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
-            <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
-          </div>
-        `;
-        item.querySelector('[data-act="plus"]').onclick = (ev)=>{
-          ev.stopPropagation();
-          if(!isAdmin) return;
-          incCount(nick, r.type, r.item, +1);
-          render();
-        };
-        item.querySelector('[data-act="minus"]').onclick = (ev)=>{
-          ev.stopPropagation();
-          if(!isAdmin) return;
-          incCount(nick, r.type, r.item, -1);
-          render();
-        };
-        grid.appendChild(item);
+  async function incCountFS(nick, type, itemId, itemText, delta){
+    const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(itemRef);
+      if(!snap.exists()){
+        if(delta < 0) return;
+        tx.set(itemRef, { itemText, count: delta });
+        return;
       }
+      const cur = snap.data().count || 0;
+      const next = Math.max(0, cur + delta);
+      if(next === 0) tx.delete(itemRef);
+      else tx.update(itemRef, { count: next, itemText });
+    });
+  }
+
+  let profile = null;
+  let isAdmin = false;
+
+  $("refreshBtn").onclick = ()=>render();
+
+  onAuthStateChanged(auth, async (u)=>{
+    if(!u){ location.replace("index.html"); return; }
+    profile = await getProfile(u.uid);
+    if(!profile){ location.replace("index.html"); return; }
+
+    isAdmin = (profile.role === "admin") || (String(profile.nickname).trim() === "도리");
+
+    $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
+    $("modeText").textContent = isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+
+    render();
+  });
+
+  async function render(){
+    $("loadState").textContent = "불러오는 중…";
+    const accBox = $("accBox");
+    accBox.innerHTML = "";
+
+    const nicks = (await getNickList(isAdmin, profile.nickname)).sort((a,b)=>a.localeCompare(b,"ko"));
+    if(!nicks.length){
+      $("loadState").textContent = "표시할 기록이 없어요.";
+      accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
+      return;
     }
 
-    panel.appendChild(headTable);
-    panel.appendChild(grid);
-    accBox.appendChild(card);
+    let total = 0;
+
+    for(const nick of nicks){
+      const rows = await getCountsForNick(nick);
+      const nickSum = rows.reduce((a,b)=>a + (b.v||0), 0);
+      total += nickSum;
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="accHead">
+          <b>${escapeHtml(nick)}</b>
+          <span class="badge">${nickSum}회</span>
+        </div>
+        <div class="panel"></div>
+      `;
+      const panel = card.querySelector(".panel");
+      card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
+
+      const headTable = document.createElement("div");
+      headTable.className = "table";
+      headTable.innerHTML = `
+        <div class="tr">
+          <div>항목 이름</div>
+          <div class="tdRight">수량</div>
+          <div class="tdRight">(+/-)</div>
+        </div>
+      `;
+
+      const grid = document.createElement("div");
+      grid.className = "rowsGrid";
+
+      if(rows.length === 0){
+        grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+      } else {
+        for(const r of rows){
+          const item = document.createElement("div");
+          item.className = "itemCard";
+          item.innerHTML = `
+            <div class="itemLeft">
+              <b>${escapeHtml(r.item)}</b>
+              <div class="small">${escapeHtml(r.type)}</div>
+            </div>
+            <div class="itemMid">${r.v}</div>
+            <div class="itemRight">
+              <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
+              <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
+            </div>
+          `;
+
+          item.querySelector('[data-act="plus"]').onclick = async (ev)=>{
+            ev.stopPropagation();
+            if(!isAdmin) return;
+            await incCountFS(nick, r.type, r.itemId, r.item, +1);
+            render();
+          };
+          item.querySelector('[data-act="minus"]').onclick = async (ev)=>{
+            ev.stopPropagation();
+            if(!isAdmin) return;
+            await incCountFS(nick, r.type, r.itemId, r.item, -1);
+            render();
+          };
+
+          grid.appendChild(item);
+        }
+      }
+
+      panel.appendChild(headTable);
+      panel.appendChild(grid);
+      accBox.appendChild(card);
+    }
+
+    $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${total}회)`;
   }
-}
-render();
 </script>
 </body>
 </html>
