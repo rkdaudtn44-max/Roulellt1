@@ -26,18 +26,18 @@
     .result{font-size:18px;font-weight:900}
     .small{font-size:12px;color:var(--muted)}
 
-    /* ✅ 추가: 횟수 입력 UI (외관 톤 유지) */
+    /* 횟수/닉네임 입력 UI (톤 유지) */
     .spinBox{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .spinCount{
-      width:86px;
+    .spinCount, .nickInput{
       border:1px solid var(--line);
       border-radius:12px;
       padding:10px 10px;
       font-weight:900;
       font-size:15px;
       background:#fff;
-      text-align:center;
     }
+    .spinCount{width:86px;text-align:center}
+    .nickInput{width:160px}
     .spinHint{font-size:12px;color:var(--muted)}
     .btn:disabled{opacity:.55;cursor:not-allowed}
   </style>
@@ -55,16 +55,19 @@
       <div class="row">
         <div>
           <h2>룰렛 페이지</h2>
-          <div class="muted">이제 저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
+          <div class="muted">저장은 “항목별 카운트(누적)”로만 저장돼요.</div>
         </div>
 
-        <!-- ✅ 여기: 버튼 옆에 횟수 입력 -->
         <div class="spinBox">
           <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
           <input class="spinCount" id="spinCount" type="number" min="1" max="999" value="1" inputmode="numeric" />
+          <!-- ✅ 관리자에게만 보이게 할 닉네임 입력 -->
+          <input class="nickInput" id="targetNick" placeholder="기록될 닉네임" />
         </div>
       </div>
-      <div class="spinHint">* 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.</div>
+      <div class="spinHint" id="hintText">
+        * 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.
+      </div>
 
       <div style="height:10px"></div>
 
@@ -83,8 +86,8 @@
 
 <script>
 const LS_USER   = "currentUser";
-const LS_LOG    = "rouletteLog";           // 예전 리스트(있을 수 있음)
-const LS_COUNT  = "rouletteCountsV1";      // 새 카운트
+const LS_LOG    = "rouletteLog";
+const LS_COUNT  = "rouletteCountsV1";
 const LS_MIGR   = "rouletteCountsMigratedV1";
 
 function getUser(){ try{return JSON.parse(localStorage.getItem(LS_USER)||"null")}catch{return null} }
@@ -93,6 +96,7 @@ if(!user || !user.nickname){
   location.replace("index.html");
   throw new Error("LOGIN_REQUIRED");
 }
+const isAdmin = (user.role === "admin");
 
 document.getElementById("who").textContent = `${user.nickname} · ${user.role || "user"}`;
 document.getElementById("logoutBtn").onclick = ()=>{
@@ -102,6 +106,19 @@ document.getElementById("logoutBtn").onclick = ()=>{
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/** ✅ 관리자만 닉네임 입력칸 사용 */
+const nickInput = document.getElementById("targetNick");
+const hintText  = document.getElementById("hintText");
+if(!isAdmin){
+  nickInput.style.display = "none";
+  hintText.textContent = "* 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.";
+} else {
+  // 관리자 기본값: 마지막으로 쓴 닉네임 기억
+  const last = localStorage.getItem("lastTargetNick") || "";
+  nickInput.value = last;
+  hintText.textContent = "* (관리자) 기록될 닉네임을 입력하고 돌리면 그 사람 기록으로 저장돼요.";
 }
 
 /** 룰렛 데이터 */
@@ -237,7 +254,7 @@ function migrateIfNeeded(){
 }
 migrateIfNeeded();
 
-/** ✅ N회 돌리기 */
+/** N회 돌리기 */
 function readSpinCount(){
   const el = document.getElementById("spinCount");
   let n = parseInt(el.value, 10);
@@ -247,27 +264,36 @@ function readSpinCount(){
   return n;
 }
 
-const spinBtn = document.getElementById("spinBtn");
+/** ✅ 저장 대상 닉네임 결정 */
+function getTargetNick(){
+  if(!isAdmin) return user.nickname;
+  const v = String(nickInput.value || "").trim();
+  const target = v.length ? v : user.nickname;
+  localStorage.setItem("lastTargetNick", target);
+  return target;
+}
 
+const spinBtn = document.getElementById("spinBtn");
 spinBtn.onclick = async ()=>{
   const n = readSpinCount();
+  const targetNick = getTargetNick(); // ✅ 이 닉네임으로 기록 저장
+
   spinBtn.disabled = true;
 
-  // 빠르게 N회 저장 (UI 렉 방지용으로 아주 짧게 양보)
   let lastItem = "-";
   for(let i=0;i<n;i++){
     const pack = ROULETTES[currentType];
     const picked = pickWeighted(pack.items || []);
     const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
-    incCount(user.nickname, currentType, itemText, 1);
+    incCount(targetNick, currentType, itemText, 1);
     lastItem = itemText;
 
-    // 25회마다 잠깐 양보(모바일 멈춤 방지)
     if(i % 25 === 24) await new Promise(r=>setTimeout(r, 0));
   }
 
   document.getElementById("resultText").textContent = `결과: ${lastItem} (총 ${n}회 저장)`;
-  document.getElementById("resultMeta").textContent = `${ROULETTES[currentType].label} · ${new Date().toLocaleString("ko-KR")}`;
+  document.getElementById("resultMeta").textContent =
+    `${ROULETTES[currentType].label} · 대상: ${targetNick} · ${new Date().toLocaleString("ko-KR")}`;
 
   spinBtn.disabled = false;
 };
