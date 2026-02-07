@@ -26,7 +26,6 @@
     .result{font-size:18px;font-weight:900}
     .small{font-size:12px;color:var(--muted)}
 
-    /* 횟수/닉네임 입력 UI (톤 유지) */
     .spinBox{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .spinCount, .nickInput{
       border:1px solid var(--line);
@@ -61,7 +60,6 @@
         <div class="spinBox">
           <button class="btn pri" id="spinBtn">룰렛 돌리기</button>
           <input class="spinCount" id="spinCount" type="number" min="1" max="999" value="1" inputmode="numeric" />
-          <!-- ✅ 관리자에게만 보이게 할 닉네임 입력 -->
           <input class="nickInput" id="targetNick" placeholder="기록될 닉네임" />
         </div>
       </div>
@@ -108,20 +106,19 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-/** ✅ 관리자만 닉네임 입력칸 사용 */
+/** 관리자만 닉네임 입력 */
 const nickInput = document.getElementById("targetNick");
 const hintText  = document.getElementById("hintText");
 if(!isAdmin){
   nickInput.style.display = "none";
   hintText.textContent = "* 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.";
 } else {
-  // 관리자 기본값: 마지막으로 쓴 닉네임 기억
   const last = localStorage.getItem("lastTargetNick") || "";
   nickInput.value = last;
   hintText.textContent = "* (관리자) 기록될 닉네임을 입력하고 돌리면 그 사람 기록으로 저장돼요.";
 }
 
-/** 룰렛 데이터 */
+/** ✅ 최종: 룰렛 목록/확률 반영 */
 const ROULETTES = {
   normal: {
     label: "일반",
@@ -138,9 +135,32 @@ const ROULETTES = {
       { text: "실드+100", w: 2.3 },
       { text: "실드-100", w: 2.3 },
       { text: "ASMR방송[3분]", w: 1.7 },
-      { text: "룰렛 다돌권", w: 1.0 }
+      { text: "룰렛 다돌권", w: 3.4 },
+      { text: "헬기 리액[킵x]", w: 1.7 },
+      { text: "ㅇ받침체[2분]", w: 3.4 },
+      { text: "출석체크 리액[킵x]", w: 3.4 },
+      { text: "브라보[킵x]", w: 3.4 },
+      { text: "3인칭[1분]", w: 3.4 },
+      { text: "방종까지 쉴드 0개[킵x]", w: 1.7 },
+      { text: "발박수", w: 3.4 },
+      { text: "방제 변경권[10분/킵 불가]", w: 1.7 },
+      { text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
+      { text: "연하충애교도리[1분]", w: 1.7 },
+      { text: "봉인추가", w: 1.7 },
+      { text: "봉인제거", w: 1.7 },
+      { text: "이쑤시개 리액션[킵x]", w: 1.7 },
+      { text: "배통통[킵x]", w: 3.4 },
+      { text: "공지변경권[다음 방송까지]", w: 1.7 },
+      { text: "박수 3번[킵x]", w: 3.4 },
+      { text: "투명의자 1분[킵x]", w: 1.7 },
+      { text: "스쿼트 5개[킵x]", w: 1.7 },
+      { text: "벽찍[킵x]", w: 3.4 },
+      { text: "TMI 1개 올리기", w: 3.4 },
+      { text: "이름 3번 불러주기", w: 1.7 },
+      { text: "꽝", w: 12.1 }
     ]
   },
+
   noble: {
     label: "귀족",
     items: [
@@ -152,17 +172,29 @@ const ROULETTES = {
       { text: "캐스트 저장권 2회", w: 13 },
       { text: "실드 2배", w: 5 },
       { text: "실드펑 2배", w: 5 },
-      { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 45 }
+      { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 4 },
+      { text: "귀족룰렛 다돌권", w: 10 },
+      { text: "원하는 이름으로 캐스트 저장권", w: 5 },
+      { text: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w: 4 },
+      { text: "실드 음수로 변경", w: 4 },
+      { text: "실드 양수로 변경", w: 4 },
+      { text: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w: 4 },
+      { text: "팬보드 3개 추가", w: 5 },
+      { text: "도리 용돈", w: 5 }
     ]
   },
+
   time: {
     label: "시간",
     items: [
-      { text: "1분", w: 20 },
-      { text: "3분", w: 30 },
-      { text: "5분", w: 25 },
-      { text: "10분", w: 15 },
-      { text: "20분", w: 10 }
+      { text: "방송 연장권 +1분", w: 41 },
+      { text: "방송 연장권 +10분", w: 5 },
+      { text: "방송 연장권 +20분", w: 3 },
+      { text: "방송 연장권 +30분", w: 1 },
+      { text: "방송 단축권 -1분", w: 41 },
+      { text: "방송 단축권 -10분", w: 5 },
+      { text: "방송 단축권 -20분", w: 3 },
+      { text: "방송 단축권 -30분", w: 1 }
     ]
   }
 };
@@ -264,7 +296,7 @@ function readSpinCount(){
   return n;
 }
 
-/** ✅ 저장 대상 닉네임 결정 */
+/** 저장 대상 닉네임 */
 function getTargetNick(){
   if(!isAdmin) return user.nickname;
   const v = String(nickInput.value || "").trim();
@@ -276,7 +308,7 @@ function getTargetNick(){
 const spinBtn = document.getElementById("spinBtn");
 spinBtn.onclick = async ()=>{
   const n = readSpinCount();
-  const targetNick = getTargetNick(); // ✅ 이 닉네임으로 기록 저장
+  const targetNick = getTargetNick();
 
   spinBtn.disabled = true;
 
