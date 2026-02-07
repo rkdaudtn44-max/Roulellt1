@@ -29,8 +29,19 @@
     .small{font-size:12px;color:var(--muted)}
 
     .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
-    @media (min-width: 740px){ .rowsGrid{grid-template-columns:1fr 1fr;} }
-    .itemCard{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:flex;gap:10px;align-items:center;justify-content:space-between;}
+    @media (min-width: 740px){
+      .rowsGrid{grid-template-columns:1fr 1fr;}
+    }
+    .itemCard{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:#fff;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
     .itemLeft b{display:block;font-size:14px}
     .itemLeft .small{margin-top:4px}
     .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
@@ -59,16 +70,16 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, collection, getDocs, query, where, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, collection, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-  // ✅ 너 Firebase 콘솔 값으로 바꿔!
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936",
+    measurementId: "G-SPY41ZKXYQ"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -82,47 +93,48 @@
   }
 
   async function getProfile(uid){
-    const ref = doc(db, "users", uid);
-    const snap = await getDoc(ref);
-    if(!snap.exists()) return null;
-    return snap.data();
+    const snap = await getDoc(doc(db, "users", uid));
+    return snap.exists() ? snap.data() : null;
   }
 
   async function getNickList(isAdmin, myNick){
     if(isAdmin){
       const snap = await getDocs(collection(db, "counts"));
       return snap.docs.map(d=>d.id);
-    }else{
-      return [myNick];
     }
+    return [myNick];
   }
 
-  async function getCountsForNick(nick){
-    // counts/{nick}/types/{type}/items/{itemId}
-    const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
+  async function getRowsForNick(nick){
     const rows = [];
+    const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
     for(const tDoc of typesSnap.docs){
       const type = tDoc.id;
       const itemsSnap = await getDocs(collection(db, "counts", nick, "types", type, "items"));
       for(const it of itemsSnap.docs){
         const d = it.data();
-        rows.push({ type, item: d.itemText || "-", v: Number(d.count||0), itemId: it.id });
+        rows.push({
+          type,
+          item: d.itemText || "-",
+          v: Number(d.count || 0),
+          itemId: it.id
+        });
       }
     }
     rows.sort((a,b)=>b.v-a.v);
     return rows;
   }
 
-  async function incCountFS(nick, type, itemId, itemText, delta){
+  async function applyDelta(nick, type, itemId, itemText, delta){
     const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(itemRef);
       if(!snap.exists()){
-        if(delta < 0) return;
+        if(delta <= 0) return;
         tx.set(itemRef, { itemText, count: delta });
         return;
       }
-      const cur = snap.data().count || 0;
+      const cur = Number(snap.data().count || 0);
       const next = Math.max(0, cur + delta);
       if(next === 0) tx.delete(itemRef);
       else tx.update(itemRef, { count: next, itemText });
@@ -140,9 +152,9 @@
     if(!profile){ location.replace("index.html"); return; }
 
     isAdmin = (profile.role === "admin") || (String(profile.nickname).trim() === "도리");
-
     $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
-    $("modeText").textContent = isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+    $("modeText").textContent =
+      isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
 
     render();
   });
@@ -153,7 +165,7 @@
     accBox.innerHTML = "";
 
     const nicks = (await getNickList(isAdmin, profile.nickname)).sort((a,b)=>a.localeCompare(b,"ko"));
-    if(!nicks.length){
+    if(nicks.length === 0){
       $("loadState").textContent = "표시할 기록이 없어요.";
       accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
       return;
@@ -162,7 +174,7 @@
     let total = 0;
 
     for(const nick of nicks){
-      const rows = await getCountsForNick(nick);
+      const rows = await getRowsForNick(nick);
       const nickSum = rows.reduce((a,b)=>a + (b.v||0), 0);
       total += nickSum;
 
@@ -175,6 +187,7 @@
         </div>
         <div class="panel"></div>
       `;
+
       const panel = card.querySelector(".panel");
       card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
 
@@ -193,7 +206,7 @@
 
       if(rows.length === 0){
         grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
-      } else {
+      }else{
         for(const r of rows){
           const item = document.createElement("div");
           item.className = "itemCard";
@@ -212,13 +225,13 @@
           item.querySelector('[data-act="plus"]').onclick = async (ev)=>{
             ev.stopPropagation();
             if(!isAdmin) return;
-            await incCountFS(nick, r.type, r.itemId, r.item, +1);
+            await applyDelta(nick, r.type, r.itemId, r.item, +1);
             render();
           };
           item.querySelector('[data-act="minus"]').onclick = async (ev)=>{
             ev.stopPropagation();
             if(!isAdmin) return;
-            await incCountFS(nick, r.type, r.itemId, r.item, -1);
+            await applyDelta(nick, r.type, r.itemId, r.item, -1);
             render();
           };
 
