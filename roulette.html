@@ -85,8 +85,14 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  // ✅ setDoc, serverTimestamp 추가!
-  import { getFirestore, doc, getDoc, collection, query, where, getDocs, runTransaction, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  import {
+    getFirestore,
+    doc,
+    getDoc,
+    runTransaction,
+    setDoc,
+    serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
@@ -104,6 +110,9 @@
 
   const $ = (id)=>document.getElementById(id);
 
+  // ✅ 관리자 이메일로만 admin 판별 (여기에 관리자 이메일 넣기)
+  const ADMIN_EMAILS = ["dori0223@gmail.com"];
+
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
@@ -116,18 +125,19 @@
     const snap = await getDoc(doc(db, "users", uid));
     return snap.exists() ? snap.data() : null;
   }
+
+  // ✅ users query 금지: nicknames/{닉} 존재 여부로 확인 (권한 안정)
   async function nicknameExists(nick){
-    const q = query(collection(db, "users"), where("nickname", "==", nick));
-    const s = await getDocs(q);
-    return !s.empty;
+    const snap = await getDoc(doc(db, "nicknames", String(nick || "").trim()));
+    return snap.exists();
   }
 
-  document.getElementById("logoutBtn").onclick = async ()=>{
+  $("logoutBtn").onclick = async ()=>{
     await signOut(auth);
     location.replace("index.html");
   };
 
-  /** ✅ 룰렛 목록/확률 그대로 */
+  /** 룰렛 목록/확률 그대로 */
   const ROULETTES = {
     normal: { label: "일반", items: [
       { text: "냥멍체[3분]", w: 3.4 },{ text: "원하는체[3분_5글자]", w: 3.4 },
@@ -232,19 +242,20 @@
 
   async function getTargetNick(){
     if(!isAdmin) return profile.nickname;
+
     const v = String(nickInput.value || "").trim();
     const target = v.length ? v : profile.nickname;
 
-    // 오타 방지(존재하는 닉네임만 저장)
+    // ✅ nicknames/{닉} 존재 여부로 검증 (권한 안정)
     if(!(await nicknameExists(target))){
       throw new Error(`존재하지 않는 닉네임: ${target}`);
     }
+
     localStorage.setItem("lastTargetNick", target);
     return target;
   }
 
-  // ✅ 핵심 수정: 부모 문서(counts/{nick}, counts/{nick}/types/{type})도 만들어서
-  // log.html에서 닉네임 목록이 뜨고 “저장 안 된 것처럼 보이는 문제”가 사라짐
+  // ✅ counts 구조 저장 (부모 문서까지 생성해 log.html에서 목록이 잘 뜨게)
   async function applyDelta(nick, type, itemText, delta){
     const itemId = encodeKey(itemText);
 
@@ -273,10 +284,14 @@
 
   onAuthStateChanged(auth, async (u)=>{
     if(!u){ location.replace("index.html"); return; }
+
     profile = await getProfile(u.uid);
     if(!profile){ location.replace("index.html"); return; }
 
-    isAdmin = (profile.role === "admin") || (String(profile.nickname).trim() === "도리");
+    // ✅ 이메일 기반 admin
+    const email = String(u.email || "").toLowerCase();
+    isAdmin = ADMIN_EMAILS.includes(email);
+
     $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
 
     if(!isAdmin){
