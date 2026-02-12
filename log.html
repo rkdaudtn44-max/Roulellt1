@@ -24,7 +24,7 @@ body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,
 .itemCard{border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;justify-content:space-between;align-items:center}
 .itemRight{display:flex;gap:6px}
 .mini{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
-.muted{color:var(--muted);font-size:13px}
+.muted{color:#6b7280;font-size:13px}
 </style>
 </head>
 <body>
@@ -46,7 +46,6 @@ body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
 <script>
-try {
 
 const firebaseConfig={
 apiKey:"AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
@@ -65,14 +64,16 @@ if(!user){location.href="index.html";return;}
 
 document.getElementById("who").textContent=user.email;
 
-let profileSnap=await db.collection("users").doc(user.uid).get();
-if(!profileSnap.exists){document.getElementById("app").innerHTML="프로필 없음";return;}
+const profileSnap=await db.collection("users").doc(user.uid).get();
+if(!profileSnap.exists){
+document.getElementById("app").innerHTML="프로필 없음";
+return;
+}
 
 const nickname=profileSnap.data().nickname;
 const isAdmin=ADMIN_EMAILS.includes(user.email);
 
 render(nickname,isAdmin);
-
 });
 
 async function render(myNick,isAdmin){
@@ -89,7 +90,10 @@ nickList=snap.docs.map(d=>d.id);
 nickList=[myNick];
 }
 
-if(nickList.length===0){app.innerHTML="기록 없음";return;}
+if(nickList.length===0){
+app.innerHTML="기록 없음";
+return;
+}
 
 for(const nick of nickList){
 
@@ -98,11 +102,10 @@ card.className="card";
 
 const head=document.createElement("div");
 head.className="accHead";
-head.innerHTML=`<b>${nick}</b><span class="badge">로딩...</span>`;
+head.innerHTML=`<b>${nick}</b><span class="badge">0회</span>`;
 
 const panel=document.createElement("div");
 panel.className="panel";
-
 head.onclick=()=>panel.classList.toggle("on");
 
 card.appendChild(head);
@@ -110,23 +113,36 @@ card.appendChild(panel);
 app.appendChild(card);
 
 let total=0;
-let byType={normal:[],noble:[],time:[]};
+let byType={};
 
 try{
 const typesSnap=await db.collection("counts").doc(nick).collection("types").get();
 
 for(const t of typesSnap.docs){
-const itemsSnap=await db.collection("counts").doc(nick)
-.collection("types").doc(t.id)
-.collection("items").get();
+
+if(!byType[t.id]) byType[t.id]=[];
+
+const itemsSnap=await db.collection("counts")
+.doc(nick)
+.collection("types")
+.doc(t.id)
+.collection("items")
+.get();
 
 itemsSnap.forEach(it=>{
-const data=it.data();
-total+=data.count||0;
-byType[t.id].push({id:it.id,text:data.itemText,count:data.count||0,type:t.id});
+const data=it.data()||{};
+const count=data.count||0;
+total+=count;
+byType[t.id].push({
+text:data.itemText||it.id,
+count:count
+});
 });
 }
-}catch(e){}
+
+}catch(e){
+console.log("읽기 오류",e);
+}
 
 head.querySelector(".badge").textContent=total+"회";
 
@@ -141,10 +157,15 @@ panel.appendChild(grid);
 function renderType(type){
 grid.innerHTML="";
 tabs.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
-tabs.querySelector(`[data-type='${type}']`).classList.add("on");
+const activeTab=tabs.querySelector(`[data-type='${type}']`);
+if(activeTab) activeTab.classList.add("on");
 
 const list=byType[type]||[];
-if(list.length===0){grid.innerHTML="<div class='muted'>항목 없음</div>";return;}
+
+if(list.length===0){
+grid.innerHTML="<div class='muted'>항목 없음</div>";
+return;
+}
 
 list.forEach(item=>{
 const div=document.createElement("div");
@@ -153,30 +174,36 @@ div.innerHTML=`
 <div>${item.text}</div>
 <div class="itemRight">
 <span>${item.count}</span>
-${isAdmin?`<button class="mini">+</button><button class="mini">-</button>`:""}
 </div>`;
 grid.appendChild(div);
 });
 }
 
-["normal","noble","time"].forEach(type=>{
+Object.keys(byType).forEach(type=>{
 const btn=document.createElement("div");
 btn.className="tab";
 btn.dataset.type=type;
-btn.textContent=type==="normal"?"일반":type==="noble"?"귀족":"시간";
+
+btn.textContent=
+type==="normal"?"일반":
+type==="noble"?"귀족":
+type==="time"?"시간":
+type;
+
 btn.onclick=()=>renderType(type);
 tabs.appendChild(btn);
 });
 
-renderType("normal");
-
+if(Object.keys(byType).length>0){
+renderType(Object.keys(byType)[0]);
+}else{
+grid.innerHTML="<div class='muted'>기록 없음</div>";
 }
 
 }
 
-} catch(e){
-document.body.innerHTML="<h2>오류 발생</h2><pre>"+e+"</pre>";
 }
+
 </script>
 
 </body>
