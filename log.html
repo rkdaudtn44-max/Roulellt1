@@ -1,60 +1,560 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>기록</title>
-<style>
-body{margin:0;background:#f6f7fb;font-family:sans-serif}
-.top{padding:10px;background:#fff;border-bottom:1px solid #ddd;display:flex;gap:8px}
-.btn{padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff}
-.card{background:#fff;margin:12px;padding:12px;border-radius:12px}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>기록</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;--pri:#5b7cff;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
+    .wrap{max-width:900px;margin:0 auto;padding:14px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    h2{margin:0 0 10px;font-size:20px}
+    .muted{color:var(--muted);font-size:13px}
+    .danger{color:var(--danger);font-weight:900;font-size:13px}
+
+    /* ✅ 흰화면 방지용 치명적 에러 박스 */
+    .fatal{
+      max-width:900px;margin:12px auto 0;padding:12px 14px;
+      background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;
+      color:#9f1239;font-weight:900;display:none;white-space:pre-wrap;font-size:13px;
+    }
+
+    .accHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;cursor:pointer}
+    .accHead b{font-size:16px}
+    .badge{border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-weight:900;color:#2563eb;background:#eef2ff}
+    .panel{margin-top:10px;display:none}
+    .panel.on{display:block}
+
+    .table{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .tr{display:grid;grid-template-columns:1fr 90px 120px;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:#fff;align-items:center}
+    .tr:first-child{border-top:none;background:#f9fafb;font-weight:900}
+    .tdRight{text-align:right}
+    .mini{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;font-weight:900;cursor:pointer}
+    .mini:disabled{opacity:.4;cursor:not-allowed}
+    .small{font-size:12px;color:var(--muted)}
+
+    .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
+    @media (min-width: 740px){
+      .rowsGrid{grid-template-columns:1fr 1fr;}
+    }
+    .itemCard{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:#fff;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .itemLeft b{display:block;font-size:14px}
+    .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
+    .itemRight{display:flex;gap:8px}
+
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+    .tab{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:999px;
+      padding:8px 12px;
+      font-weight:900;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+    .tab.on{
+      background:#111827;
+      border-color:#111827;
+      color:#fff;
+    }
+    .tab .tcount{
+      border:1px solid rgba(255,255,255,.25);
+      background:rgba(255,255,255,.12);
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:900;
+    }
+    .tab:not(.on) .tcount{
+      border-color:var(--line);
+      background:#f3f4f6;
+      color:#111827;
+    }
+  </style>
 </head>
 <body>
+  <div id="fatal" class="fatal"></div>
 
-<div class="top">
-<button class="btn" onclick="location.href='roulette.html'">← 룰렛</button>
-<button class="btn" onclick="location.href='lotto.html'">🎟 복권</button>
-<div style="flex:1"></div>
-<div id="who"></div>
-</div>
+  <div class="top">
+    <button class="btn" onclick="location.href='roulette.html'">← 룰렛 페이지</button>
+    <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+    <div style="flex:1"></div>
+    <div class="muted" id="who"></div>
+    <button class="btn" id="logoutBtn">로그아웃</button>
+    <button class="btn" id="refreshBtn">새로고침</button>
+  </div>
 
-<div id="app" class="card">로딩중...</div>
+  <div class="wrap">
+    <div class="card">
+      <h2>기록(항목별 카운트)</h2>
+      <div class="muted" id="modeText"></div>
+      <div style="height:10px"></div>
+      <div class="muted" id="loadState">불러오는 중…</div>
+      <div class="danger" id="errBox" style="margin-top:8px; display:none;"></div>
+    </div>
 
-<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
+    <div id="accBox"></div>
+  </div>
 
-<script>
-window.onerror=function(msg){
-document.body.innerHTML="<h2>JS 오류</h2><pre>"+msg+"</pre>";
-};
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import {
+    getFirestore,
+    doc, getDoc,
+    collection, getDocs,
+    runTransaction
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-const firebaseConfig={
-apiKey:"AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-authDomain:"roulette-b5455.firebaseapp.com",
-projectId:"roulette-b5455"
-};
+  // ✅ 흰화면 방지: 전역 오류를 화면에 표시
+  const fatalEl = document.getElementById("fatal");
+  function fatal(msg){
+    fatalEl.style.display = "block";
+    fatalEl.textContent = String(msg || "오류");
+  }
+  window.addEventListener("error", (e)=>{
+    fatal("JS 오류: " + (e.message || e.error || e));
+  });
+  window.addEventListener("unhandledrejection", (e)=>{
+    fatal("Promise 오류: " + (e.reason?.message || e.reason || e));
+  });
 
-firebase.initializeApp(firebaseConfig);
-const auth=firebase.auth();
-const db=firebase.firestore();
+  const firebaseConfig = {
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936",
+    measurementId: "G-SPY41ZKXYQ"
+  };
 
-auth.onAuthStateChanged(async user=>{
-if(!user){location.href="index.html";return;}
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-document.getElementById("who").textContent=user.email;
+  const $ = (id)=>document.getElementById(id);
 
-const snap=await db.collection("users").doc(user.uid).get();
-if(!snap.exists()){
-document.getElementById("app").innerHTML="프로필 없음";
-return;
-}
+  // ✅ 관리자 이메일
+  const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
-document.getElementById("app").innerHTML="기록 페이지 정상 작동 중 ✅";
-});
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function showError(e){
+    const box = $("errBox");
+    box.style.display = "block";
+    const code = e?.code ? `(${e.code}) ` : "";
+    box.textContent = "오류: " + code + (e?.message || e);
+  }
+  function clearError(){
+    const box = $("errBox");
+    box.style.display = "none";
+    box.textContent = "";
+  }
+
+  // ✅ 닉네임 정규화(룰렛/복권/로그 동일)
+  function normNick(v){
+    return String(v ?? "")
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  function validateNickForDocId(nick){
+    if(!nick) return "닉네임이 비어있어요.";
+    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
+    if(nick.length > 30) return "닉네임이 너무 길어요. (최대 30자)";
+    return "";
+  }
+
+  async function getProfile(uid){
+    const snap = await getDoc(doc(db, "users", uid));
+    return snap.exists() ? snap.data() : null;
+  }
+
+  async function getNickList(isAdmin, myNick){
+    if(isAdmin){
+      // ✅ 관리자는 counts 최상위 문서(id=nickname) 목록
+      const snap = await getDocs(collection(db, "counts"));
+      return snap.docs.map(d=>d.id);
+    }
+    // ✅ 일반은 본인 닉만
+    return [myNick];
+  }
+
+  async function getRowsForNickByType(nickRaw){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+
+    const byType = { normal: [], noble: [], time: [] };
+
+    // counts/{nick}/types/*
+    const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
+    for(const tDoc of typesSnap.docs){
+      const type = tDoc.id;
+      const itemsSnap = await getDocs(collection(db, "counts", nick, "types", type, "items"));
+      for(const it of itemsSnap.docs){
+        const d = it.data() || {};
+        const row = {
+          type,
+          item: d.itemText || "-",
+          v: Number(d.count || 0),
+          itemId: it.id
+        };
+        if(!byType[type]) byType[type] = [];
+        byType[type].push(row);
+      }
+    }
+
+    Object.keys(byType).forEach(t => byType[t].sort((a,b)=>b.v-a.v));
+    return byType;
+  }
+
+  async function applyDelta(nickRaw, type, itemId, itemText, delta){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+
+    const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
+
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(itemRef);
+
+      if(!snap.exists()){
+        if(delta <= 0) return;
+        tx.set(itemRef, { itemText, count: delta });
+        return;
+      }
+
+      const cur = Number(snap.data()?.count || 0);
+      const next = Math.max(0, cur + delta);
+
+      if(next === 0) tx.delete(itemRef);
+      else tx.update(itemRef, { count: next, itemText });
+    });
+  }
+
+  function sumRows(list){
+    return (list||[]).reduce((a,b)=>a + (Number(b.v)||0), 0);
+  }
+
+  function safeTypeLabel(type){
+    if(type==="normal") return "일반";
+    if(type==="noble") return "귀족";
+    if(type==="time") return "시간";
+    return type;
+  }
+
+  function typeOrder(){
+    return ["normal","noble","time"];
+  }
+
+  let profile = null;
+  let isAdmin = false;
+
+  // ✅ UI 상태 유지(펼침 상태/탭)
+  const openSet = new Set();
+  const tabByNick = new Map();
+  let grandTotal = 0;
+
+  $("refreshBtn").onclick = ()=>render();
+  $("logoutBtn").onclick = async ()=>{
+    await signOut(auth);
+    location.replace("index.html");
+  };
+
+  onAuthStateChanged(auth, async (u)=>{
+    if(!u){
+      location.replace("index.html");
+      return;
+    }
+
+    try{
+      clearError();
+      $("loadState").textContent = "초기화 중…";
+
+      profile = await getProfile(u.uid);
+      if(!profile){
+        $("loadState").textContent = "프로필이 없습니다.";
+        showError({ message: "users/{uid} 문서가 없어요. 회원가입이 정상 완료됐는지 확인해줘." });
+        return;
+      }
+
+      const myNick = normNick(profile.nickname);
+      const nickErr = validateNickForDocId(myNick);
+      if(nickErr){
+        $("loadState").textContent = "닉네임이 비정상이에요.";
+        showError({ message: "users/{uid}.nickname 값이 비어있거나 문서ID로 사용할 수 없는 문자(/, \\)가 포함되어 있어요." });
+        return;
+      }
+
+      const email = String(u.email || "").toLowerCase();
+      isAdmin = ADMIN_EMAILS.includes(email);
+
+      $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
+      $("modeText").textContent =
+        isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+
+      profile.nickname = myNick;
+
+      await render();
+    }catch(e){
+      $("loadState").textContent = "초기화 실패";
+      showError(e);
+
+      // 정말 심한 경우에만 fatal로 띄워서 “흰화면”이 아닌 “원인”이 보이게
+      fatal("초기화 중 오류:\n" + (e?.message || e));
+    }
+  });
+
+  async function render(){
+    clearError();
+    $("loadState").textContent = "불러오는 중…";
+    const accBox = $("accBox");
+    accBox.innerHTML = "";
+
+    try{
+      const myNick = normNick(profile?.nickname);
+      const nicks = (await getNickList(isAdmin, myNick))
+        .map(normNick)
+        .filter(n=>!validateNickForDocId(n))
+        .sort((a,b)=>a.localeCompare(b,"ko"));
+
+      if(nicks.length === 0){
+        $("loadState").textContent = "표시할 기록이 없어요.";
+        accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
+        return;
+      }
+
+      grandTotal = 0;
+
+      for(let idx=0; idx<nicks.length; idx++){
+        const nick = nicks[idx];
+
+        const byType = await getRowsForNickByType(nick);
+
+        const sumNormal = sumRows(byType.normal);
+        const sumNoble  = sumRows(byType.noble);
+        const sumTime   = sumRows(byType.time);
+        const nickSum = sumNormal + sumNoble + sumTime;
+        grandTotal += nickSum;
+
+        const currentTab = tabByNick.get(nick) || "normal";
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="accHead">
+            <b>${escapeHtml(nick)}</b>
+            <span class="badge" data-badge>${nickSum}회</span>
+          </div>
+          <div class="panel ${openSet.has(nick) ? "on" : ""}"></div>
+        `;
+
+        const panel = card.querySelector(".panel");
+        const head = card.querySelector(".accHead");
+
+        head.onclick = ()=>{
+          const willOpen = !panel.classList.contains("on");
+          panel.classList.toggle("on");
+          if(willOpen) openSet.add(nick);
+          else openSet.delete(nick);
+        };
+
+        const tabs = document.createElement("div");
+        tabs.className = "tabs";
+
+        const tabCounts = {
+          normal: sumNormal,
+          noble: sumNoble,
+          time: sumTime
+        };
+
+        const headTable = document.createElement("div");
+        headTable.className = "table";
+        headTable.innerHTML = `
+          <div class="tr">
+            <div>항목 이름</div>
+            <div class="tdRight">수량</div>
+            <div class="tdRight">(+/-)</div>
+          </div>
+        `;
+
+        const grid = document.createElement("div");
+        grid.className = "rowsGrid";
+
+        const renderTypeGrid = (type)=>{
+          tabByNick.set(nick, type);
+
+          tabs.querySelectorAll(".tab").forEach(b=>{
+            b.classList.toggle("on", b.dataset.type === type);
+          });
+
+          grid.innerHTML = "";
+          const rows = (byType[type] || []).slice().sort((a,b)=>b.v-a.v);
+
+          if(rows.length === 0){
+            grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+            return;
+          }
+
+          for(const r of rows){
+            const item = document.createElement("div");
+            item.className = "itemCard";
+
+            item.innerHTML = `
+              <div class="itemLeft">
+                <b>${escapeHtml(r.item)}</b>
+                <div class="small">${escapeHtml(safeTypeLabel(type))}</div>
+              </div>
+              <div class="itemMid" data-count>${r.v}</div>
+              <div class="itemRight">
+                <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
+                <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
+              </div>
+            `;
+
+            const countEl = item.querySelector('[data-count]');
+            const minusBtn = item.querySelector('[data-act="minus"]');
+            const plusBtn  = item.querySelector('[data-act="plus"]');
+            const badgeEl = card.querySelector("[data-badge]");
+
+            plusBtn.onclick = async (ev)=>{
+              ev.preventDefault();
+              ev.stopPropagation();
+              if(!isAdmin) return;
+
+              plusBtn.disabled = true;
+              minusBtn.disabled = true;
+
+              try{
+                await applyDelta(nick, type, r.itemId, r.item, +1);
+
+                r.v = Number(r.v||0) + 1;
+                countEl.textContent = String(r.v);
+                if(r.v > 0) minusBtn.disabled = false;
+
+                tabCounts[type] = (tabCounts[type]||0) + 1;
+                const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
+                badgeEl.textContent = `${newNickSum}회`;
+
+                grandTotal += 1;
+                $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+
+                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
+                if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
+
+              }catch(e){
+                showError(e);
+              }finally{
+                plusBtn.disabled = !isAdmin;
+                minusBtn.disabled = !(isAdmin && r.v>0);
+              }
+            };
+
+            minusBtn.onclick = async (ev)=>{
+              ev.preventDefault();
+              ev.stopPropagation();
+              if(!isAdmin) return;
+              if(r.v <= 0) return;
+
+              plusBtn.disabled = true;
+              minusBtn.disabled = true;
+
+              try{
+                await applyDelta(nick, type, r.itemId, r.item, -1);
+
+                r.v = Math.max(0, Number(r.v||0) - 1);
+
+                if(r.v === 0){
+                  item.remove();
+                }else{
+                  countEl.textContent = String(r.v);
+                }
+
+                tabCounts[type] = Math.max(0, (tabCounts[type]||0) - 1);
+                const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
+                badgeEl.textContent = `${newNickSum}회`;
+
+                grandTotal = Math.max(0, grandTotal - 1);
+                $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+
+                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
+                if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
+
+                if(grid.children.length === 0){
+                  grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+                }
+
+              }catch(e){
+                showError(e);
+              }finally{
+                plusBtn.disabled = !isAdmin;
+                if(item.isConnected){
+                  minusBtn.disabled = !(isAdmin && r.v>0);
+                }
+              }
+            };
+
+            grid.appendChild(item);
+          }
+        };
+
+        for(const t of typeOrder()){
+          const b = document.createElement("button");
+          b.className = "tab" + (t===currentTab ? " on" : "");
+          b.dataset.type = t;
+          b.type = "button";
+          b.innerHTML = `${safeTypeLabel(t)} <span class="tcount">${tabCounts[t]||0}</span>`;
+
+          b.onclick = (ev)=>{
+            ev.preventDefault();
+            ev.stopPropagation();
+            renderTypeGrid(t);
+          };
+
+          tabs.appendChild(b);
+        }
+
+        panel.appendChild(tabs);
+        panel.appendChild(headTable);
+        panel.appendChild(grid);
+
+        renderTypeGrid(currentTab);
+        accBox.appendChild(card);
+
+        // ✅ 리스트가 길어져도 브라우저 멈춤 방지
+        if(idx % 15 === 14) await new Promise(r=>setTimeout(r, 0));
+      }
+
+      $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+    }catch(e){
+      $("loadState").textContent = "불러오기 실패";
+      showError(e);
+
+      // 권한 문제/규칙 문제는 여기서 바로 보이게
+      if(String(e?.code||"").includes("permission-denied")){
+        fatal("권한 오류(permission-denied)\n\nFirestore 규칙에서 log.html 읽기가 막혔어요.\n- 관리자는 counts 전체 읽기 허용\n- 일반 유저는 본인 nickname 문서만 읽기 허용\n\n현재 규칙/닉네임 저장 상태를 확인해야 합니다.");
+      }
+    }
+  }
 </script>
-
 </body>
 </html>
