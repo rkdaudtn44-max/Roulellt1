@@ -217,16 +217,18 @@
 
     function safeStr(v){ return String(v ?? "").trim(); }
 
+    // ✅ users + publicUsers 둘 다 준비 (기존 users 틀 유지 + 랭킹용 공개 컬렉션 추가)
     async function ensureUserDoc(user){
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
+      const userRef = doc(db, "users", user.uid);
+      const pubRef  = doc(db, "publicUsers", user.uid);
+
+      const snap = await getDoc(userRef);
 
       if(!snap.exists()){
-        // 신규 유저 문서 생성 (닉네임은 이메일 앞부분으로 임시)
         const email = safeStr(user.email);
         const nickGuess = email ? email.split("@")[0] : (user.displayName || "사용자");
 
-        await setDoc(ref, {
+        await setDoc(userRef, {
           uid: user.uid,
           email: user.email || null,
           nickname: nickGuess,
@@ -237,36 +239,66 @@
           updatedAt: serverTimestamp()
         }, { merge: true });
 
-        return ref;
+        // ✅ 랭킹 공개용 (email 없이)
+        await setDoc(pubRef, {
+          uid: user.uid,
+          nickname: nickGuess,
+          xp: 0,
+          level: 1,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        return { userRef, pubRef };
       }
 
-      // 이미 존재하면: nickname/role 등 기존값 유지, xp/level 없으면만 채움
+      // 이미 존재하면 xp/level 없으면만 채움
       const data = snap.data() || {};
       const patch = {};
       if(data.xp === undefined) patch.xp = 0;
       if(data.level === undefined) patch.level = calcLevelFromXp(data.xp ?? 0);
+
       if(Object.keys(patch).length){
         patch.updatedAt = serverTimestamp();
-        await setDoc(ref, patch, { merge: true });
+        await setDoc(userRef, patch, { merge: true });
       }
-      return ref;
+
+      // ✅ publicUsers도 동기화(닉네임/레벨/경험치)
+      const nick = data.nickname || (user.email ? user.email.split("@")[0] : "사용자");
+      const xp = Number((data.xp ?? patch.xp) ?? 0);
+      const level = Number((data.level ?? patch.level) ?? calcLevelFromXp(xp));
+
+      await setDoc(pubRef, {
+        uid: user.uid,
+        nickname: nick,
+        xp,
+        level,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      return { userRef, pubRef };
     }
 
     async function loadMe(user){
-      const ref = await ensureUserDoc(user);
-      const snap = await getDoc(ref);
+      const { userRef } = await ensureUserDoc(user);
+      const snap = await getDoc(userRef);
       const data = snap.data() || {};
 
       meNick.textContent = data.nickname || "-";
       meXp.textContent = String(data.xp ?? 0);
       meLevel.textContent = String(data.level ?? calcLevelFromXp(data.xp ?? 0));
 
-      return { ref, data };
+      return { userRef, data };
     }
 
+    // ✅ TOP5는 users가 아니라 publicUsers에서 조회 (Rules 안깨고 보안 유지)
     async function loadRanking(){
       rankBody.innerHTML = "";
-      const q = query(collection(db, "users"), orderBy("level", "desc"), orderBy("xp", "desc"), limit(5));
+      const q = query(
+        collection(db, "publicUsers"),
+        orderBy("level", "desc"),
+        orderBy("xp", "desc"),
+        limit(5)
+      );
       const snaps = await getDocs(q);
       let i=1;
       snaps.forEach(s=>{
@@ -302,18 +334,30 @@
         resultBox.style.display = "grid";
 
         const userRef = doc(db, "users", user.uid);
+        const pubRef  = doc(db, "publicUsers", user.uid);
 
-        // DB 저장 + 경험치 업데이트 (트랜잭션)
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(userRef);
           if(!snap.exists()) throw new Error("users 문서가 없습니다. (가입/로그인부터 다시 확인)");
           const data = snap.data() || {};
 
-          const newXp = (Number(data.xp||0) + earned);
+          const oldXp = Number(data.xp||0);
+          const newXp = oldXp + earned;
           const newLevel = calcLevelFromXp(newXp);
 
+          // ✅ 본인 users 업데이트
           tx.update(userRef, { xp: newXp, level: newLevel, updatedAt: serverTimestamp() });
 
+          // ✅ 랭킹 공개용도 동기화 (email 없음)
+          tx.set(pubRef, {
+            uid: user.uid,
+            nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
+            xp: newXp,
+            level: newLevel,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+
+          // ✅ 플레이 로그 저장 (Rules에 lottoPlays 추가 필요)
           const playRef = doc(collection(db, "lottoPlays"));
           tx.set(playRef, {
             uid: user.uid,
@@ -337,7 +381,6 @@
 
     onAuthStateChanged(auth, async (user) => {
       if(!user){
-        // ✅ 무한반복 방지: 로그인 후 다시 lotto.html로 복귀
         location.replace("./index.html?next=lotto.html");
         return;
       }
