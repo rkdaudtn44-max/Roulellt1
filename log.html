@@ -29,7 +29,6 @@
     .mini:disabled{opacity:.4;cursor:not-allowed}
     .small{font-size:12px;color:var(--muted)}
 
-    /* ✅ 2열 종대(기존 유지) */
     .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
     @media (min-width: 740px){
       .rowsGrid{grid-template-columns:1fr 1fr;}
@@ -48,7 +47,6 @@
     .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
     .itemRight{display:flex;gap:8px}
 
-    /* ✅ 타입 탭 */
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
     .tab{
       border:1px solid var(--line);
@@ -123,6 +121,9 @@
 
   const $ = (id)=>document.getElementById(id);
 
+  // ✅ roulette.html과 동일하게 “이메일 기준 admin”
+  const ADMIN_EMAILS = ["dori0223@gmail.com"];
+
   function escapeHtml(s){
     return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
@@ -139,8 +140,18 @@
     box.textContent = "";
   }
 
+  // ✅ 닉네임 정규화 통일(가장 중요!)
   function normNick(v){
-    return String(v ?? "").trim();
+    return String(v ?? "")
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  function validateNickForDocId(nick){
+    if(!nick) return "닉네임이 비어있어요.";
+    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
+    return "";
   }
 
   async function getProfile(uid){
@@ -156,8 +167,11 @@
     return [myNick];
   }
 
-  // ✅ 타입별로 나눠서 가져오기
-  async function getRowsForNickByType(nick){
+  async function getRowsForNickByType(nickRaw){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+
     const byType = { normal: [], noble: [], time: [] };
 
     const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
@@ -177,12 +191,15 @@
       }
     }
 
-    // 내림차순 정렬
     Object.keys(byType).forEach(t => byType[t].sort((a,b)=>b.v-a.v));
     return byType;
   }
 
-  async function applyDelta(nick, type, itemId, itemText, delta){
+  async function applyDelta(nickRaw, type, itemId, itemText, delta){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+
     const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(itemRef);
@@ -201,11 +218,8 @@
   let profile = null;
   let isAdmin = false;
 
-  // ✅ UI 상태 유지: 열려있는 닉네임/선택 탭
-  const openSet = new Set();          // 열려있는 닉네임
-  const tabByNick = new Map();        // nick -> "normal"|"noble"|"time"
-
-  // ✅ 합산 총합 (화면 상단 표시용)
+  const openSet = new Set();
+  const tabByNick = new Map();
   let grandTotal = 0;
 
   $("refreshBtn").onclick = ()=>render();
@@ -218,16 +232,22 @@
       if(!profile){ location.replace("index.html"); return; }
 
       const myNick = normNick(profile.nickname);
-      if(!myNick){
-        $("loadState").textContent = "닉네임이 비어있어요. 다시 가입/프로필 확인이 필요해요.";
-        showError({ message: "users/{uid} 문서에 nickname 값이 없거나 공백입니다." });
+      const nickErr = validateNickForDocId(myNick);
+      if(nickErr){
+        $("loadState").textContent = "닉네임이 비정상이에요. 다시 가입/프로필 확인이 필요해요.";
+        showError({ message: "users/{uid}.nickname 값이 비어있거나 문서ID로 사용할 수 없는 문자(/, \\)가 포함되어 있어요." });
         return;
       }
 
-      isAdmin = (profile.role === "admin") || (myNick === "도리");
+      const email = String(u.email || "").toLowerCase();
+      isAdmin = ADMIN_EMAILS.includes(email);
+
       $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
       $("modeText").textContent =
         isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+
+      // 프로필 닉도 정규화해서 이후 사용
+      profile.nickname = myNick;
 
       render();
     }catch(e){
@@ -269,7 +289,13 @@
 
       grandTotal = 0;
 
-      for(const nick of nicks){
+      for(const rawNick of nicks){
+        const nick = normNick(rawNick);
+
+        // 관리자는 counts 문서id를 가져오니까, 여기서도 한번 검증
+        const err = validateNickForDocId(nick);
+        if(err) continue;
+
         const byType = await getRowsForNickByType(nick);
 
         const sumNormal = sumRows(byType.normal);
@@ -300,7 +326,6 @@
           else openSet.delete(nick);
         };
 
-        // ✅ 탭 UI
         const tabs = document.createElement("div");
         tabs.className = "tabs";
 
@@ -310,7 +335,6 @@
           time: sumTime
         };
 
-        // ✅ 표 헤더
         const headTable = document.createElement("div");
         headTable.className = "table";
         headTable.innerHTML = `
@@ -321,15 +345,12 @@
           </div>
         `;
 
-        // ✅ 아이템 그리드(2열)
         const grid = document.createElement("div");
         grid.className = "rowsGrid";
 
-        // ✅ 그리드를 특정 타입으로 렌더링
         const renderTypeGrid = (type)=>{
           tabByNick.set(nick, type);
 
-          // 탭 스타일
           tabs.querySelectorAll(".tab").forEach(b=>{
             b.classList.toggle("on", b.dataset.type === type);
           });
@@ -346,8 +367,6 @@
           for(const r of rows){
             const item = document.createElement("div");
             item.className = "itemCard";
-            item.dataset.type = type;
-            item.dataset.itemId = r.itemId;
 
             item.innerHTML = `
               <div class="itemLeft">
@@ -366,7 +385,6 @@
             const plusBtn  = item.querySelector('[data-act="plus"]');
             const badgeEl = card.querySelector("[data-badge]");
 
-            // ✅ 핵심: +/- 누를 때 밖으로 튕김 방지 + 전체 render() 재호출 금지
             plusBtn.onclick = async (ev)=>{
               ev.preventDefault();
               ev.stopPropagation();
@@ -378,30 +396,25 @@
               try{
                 await applyDelta(nick, type, r.itemId, r.item, +1);
 
-                // 로컬 값 갱신
                 r.v = Number(r.v||0) + 1;
                 countEl.textContent = String(r.v);
 
-                // minus 활성
                 if(r.v > 0) minusBtn.disabled = false;
 
-                // 탭/뱃지 합계 갱신
                 tabCounts[type] = (tabCounts[type]||0) + 1;
                 const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
                 badgeEl.textContent = `${newNickSum}회`;
 
-                // grandTotal도 화면 표시 갱신(대략치)
                 grandTotal += 1;
                 $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
 
-                // 탭 숫자 표시 갱신
-                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
+                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
               }catch(e){
                 showError(e);
               }finally{
-                plusBtn.disabled = !isAdmin ? true : false;
+                plusBtn.disabled = !isAdmin;
                 minusBtn.disabled = !(isAdmin && r.v>0);
               }
             };
@@ -420,14 +433,12 @@
 
                 r.v = Math.max(0, Number(r.v||0) - 1);
 
-                // 0 되면 카드 제거
                 if(r.v === 0){
                   item.remove();
                 }else{
                   countEl.textContent = String(r.v);
                 }
 
-                // 탭/뱃지 합계 갱신
                 tabCounts[type] = Math.max(0, (tabCounts[type]||0) - 1);
                 const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
                 badgeEl.textContent = `${newNickSum}회`;
@@ -435,10 +446,9 @@
                 grandTotal = Math.max(0, grandTotal - 1);
                 $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
 
-                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
+                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
-                // 탭이 비어버리면 “항목이 없어요” 표시
                 if(grid.children.length === 0){
                   grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
                 }
@@ -446,8 +456,7 @@
               }catch(e){
                 showError(e);
               }finally{
-                plusBtn.disabled = !isAdmin ? true : false;
-                // r.v가 0이면 item 자체가 사라질 수도 있음
+                plusBtn.disabled = !isAdmin;
                 if(item.isConnected){
                   minusBtn.disabled = !(isAdmin && r.v>0);
                 }
@@ -458,7 +467,6 @@
           }
         };
 
-        // 탭 버튼 만들기
         for(const t of typeOrder()){
           const b = document.createElement("button");
           b.className = "tab" + (t===currentTab ? " on" : "");
@@ -479,7 +487,6 @@
         panel.appendChild(headTable);
         panel.appendChild(grid);
 
-        // 최초 렌더 타입
         renderTypeGrid(currentTab);
 
         accBox.appendChild(card);
