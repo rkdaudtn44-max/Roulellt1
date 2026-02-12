@@ -7,55 +7,51 @@
 
 <style>
 :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;}
-body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--text);}
-.top{position:sticky;top:0;background:#f6f7fb;border-bottom:1px solid var(--line);padding:10px;display:flex;gap:8px;align-items:center;z-index:10}
-.btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 12px;font-weight:700;cursor:pointer}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+.top{position:sticky;top:0;background:#f6f7fb;border-bottom:1px solid var(--line);padding:10px;display:flex;gap:8px;align-items:center;}
+.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
 .wrap{max-width:900px;margin:0 auto;padding:14px}
 .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
-.accHead{display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);border-radius:14px;cursor:pointer}
-.badge{background:#eef2ff;border-radius:999px;padding:6px 10px;font-weight:700}
+.accHead{display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.badge{background:#eef2ff;border-radius:999px;padding:4px 10px;font-weight:900}
 .panel{display:none;margin-top:10px}
 .panel.on{display:block}
-
-.tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-.tab{border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;font-weight:700;background:#fff}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tab{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer}
 .tab.on{background:#111827;color:#fff}
-
 .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px}
 @media(min-width:740px){.rowsGrid{grid-template-columns:1fr 1fr}}
-
 .itemCard{border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;justify-content:space-between;align-items:center}
-.itemLeft b{display:block}
 .itemRight{display:flex;gap:6px}
-.mini{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;font-weight:700;cursor:pointer}
+.mini{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+.muted{color:var(--muted);font-size:13px}
 </style>
 </head>
-
 <body>
 
 <div class="top">
 <button class="btn" onclick="location.href='roulette.html'">← 룰렛</button>
-<button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+<button class="btn" onclick="location.href='lotto.html'">🎟 복권</button>
 <div style="flex:1"></div>
 <div id="who"></div>
-<button class="btn" onclick="render()">새로고침</button>
+<button class="btn" onclick="location.reload()">새로고침</button>
 </div>
 
 <div class="wrap">
-<div id="accBox"></div>
+<div id="app">불러오는 중...</div>
 </div>
 
-<!-- ✅ Firebase compat (Safari 안정판) -->
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
 <script>
+try {
 
 const firebaseConfig={
 apiKey:"AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
 authDomain:"roulette-b5455.firebaseapp.com",
-projectId:"roulette-b5455",
+projectId:"roulette-b5455"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -64,68 +60,75 @@ const db=firebase.firestore();
 
 const ADMIN_EMAILS=["dori0223@gmail.com"];
 
-let isAdmin=false;
-let myNick="";
-
-function norm(v){return String(v||"").trim()}
-
 auth.onAuthStateChanged(async user=>{
 if(!user){location.href="index.html";return;}
 
-isAdmin=ADMIN_EMAILS.includes((user.email||"").toLowerCase());
-document.getElementById("who").textContent=user.email+" · "+(isAdmin?"admin":"user");
+document.getElementById("who").textContent=user.email;
 
-const snap=await db.collection("users").doc(user.uid).get();
-if(!snap.exists){return;}
-myNick=norm(snap.data().nickname);
+let profileSnap=await db.collection("users").doc(user.uid).get();
+if(!profileSnap.exists){document.getElementById("app").innerHTML="프로필 없음";return;}
 
-render();
+const nickname=profileSnap.data().nickname;
+const isAdmin=ADMIN_EMAILS.includes(user.email);
+
+render(nickname,isAdmin);
+
 });
 
-async function render(){
-const box=document.getElementById("accBox");
-box.innerHTML="불러오는 중...";
+async function render(myNick,isAdmin){
 
-let nicks=[];
+const app=document.getElementById("app");
+app.innerHTML="";
+
+let nickList=[];
+
 if(isAdmin){
 const snap=await db.collection("counts").get();
-nicks=snap.docs.map(d=>d.id);
+nickList=snap.docs.map(d=>d.id);
 }else{
-nicks=[myNick];
+nickList=[myNick];
 }
 
-box.innerHTML="";
+if(nickList.length===0){app.innerHTML="기록 없음";return;}
 
-for(const nick of nicks){
-const byType={normal:[],noble:[],time:[]};
-
-const types=await db.collection("counts").doc(nick).collection("types").get();
-for(const t of types.docs){
-const items=await db.collection("counts").doc(nick)
-.collection("types").doc(t.id)
-.collection("items").get();
-
-items.forEach(it=>{
-byType[t.id].push({...it.data(),id:it.id,type:t.id});
-});
-}
-
-const total=[...byType.normal,...byType.noble,...byType.time]
-.reduce((a,b)=>a+(b.count||0),0);
+for(const nick of nickList){
 
 const card=document.createElement("div");
 card.className="card";
 
-card.innerHTML=`
-<div class="accHead">
-<b>${nick}</b>
-<span class="badge">${total}회</span>
-</div>
-<div class="panel"></div>
-`;
+const head=document.createElement("div");
+head.className="accHead";
+head.innerHTML=`<b>${nick}</b><span class="badge">로딩...</span>`;
 
-const panel=card.querySelector(".panel");
-card.querySelector(".accHead").onclick=()=>panel.classList.toggle("on");
+const panel=document.createElement("div");
+panel.className="panel";
+
+head.onclick=()=>panel.classList.toggle("on");
+
+card.appendChild(head);
+card.appendChild(panel);
+app.appendChild(card);
+
+let total=0;
+let byType={normal:[],noble:[],time:[]};
+
+try{
+const typesSnap=await db.collection("counts").doc(nick).collection("types").get();
+
+for(const t of typesSnap.docs){
+const itemsSnap=await db.collection("counts").doc(nick)
+.collection("types").doc(t.id)
+.collection("items").get();
+
+itemsSnap.forEach(it=>{
+const data=it.data();
+total+=data.count||0;
+byType[t.id].push({id:it.id,text:data.itemText,count:data.count||0,type:t.id});
+});
+}
+}catch(e){}
+
+head.querySelector(".badge").textContent=total+"회";
 
 const tabs=document.createElement("div");
 tabs.className="tabs";
@@ -138,68 +141,43 @@ panel.appendChild(grid);
 function renderType(type){
 grid.innerHTML="";
 tabs.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
-tabs.querySelector(`[data-type="${type}"]`).classList.add("on");
+tabs.querySelector(`[data-type='${type}']`).classList.add("on");
 
-const rows=byType[type];
-if(rows.length===0){grid.innerHTML="항목 없음";return;}
+const list=byType[type]||[];
+if(list.length===0){grid.innerHTML="<div class='muted'>항목 없음</div>";return;}
 
-rows.sort((a,b)=>b.count-a.count);
-
-for(const r of rows){
-const item=document.createElement("div");
-item.className="itemCard";
-item.innerHTML=`
-<div class="itemLeft">
-<b>${r.itemText}</b>
-<div>${r.count}</div>
-</div>
+list.forEach(item=>{
+const div=document.createElement("div");
+div.className="itemCard";
+div.innerHTML=`
+<div>${item.text}</div>
 <div class="itemRight">
-<button class="mini" ${isAdmin?"":"disabled"} data-act="plus">+</button>
-<button class="mini" ${isAdmin?"":"disabled"} data-act="minus">-</button>
-</div>
-`;
-
-const countEl=item.querySelector(".itemLeft div");
-
-if(isAdmin){
-item.querySelector('[data-act="plus"]').onclick=async()=>{
-await db.collection("counts").doc(nick)
-.collection("types").doc(type)
-.collection("items").doc(r.id)
-.update({count:r.count+1});
-r.count++;
-countEl.textContent=r.count;
-};
-
-item.querySelector('[data-act="minus"]').onclick=async()=>{
-if(r.count<=0)return;
-await db.collection("counts").doc(nick)
-.collection("types").doc(type)
-.collection("items").doc(r.id)
-.update({count:r.count-1});
-r.count--;
-countEl.textContent=r.count;
-};
+<span>${item.count}</span>
+${isAdmin?`<button class="mini">+</button><button class="mini">-</button>`:""}
+</div>`;
+grid.appendChild(div);
+});
 }
 
-grid.appendChild(item);
-}
-}
-
-["normal","noble","time"].forEach(t=>{
+["normal","noble","time"].forEach(type=>{
 const btn=document.createElement("div");
 btn.className="tab";
-btn.dataset.type=t;
-btn.textContent=t;
-btn.onclick=()=>renderType(t);
+btn.dataset.type=type;
+btn.textContent=type==="normal"?"일반":type==="noble"?"귀족":"시간";
+btn.onclick=()=>renderType(type);
 tabs.appendChild(btn);
 });
 
 renderType("normal");
-box.appendChild(card);
-}
+
 }
 
+}
+
+} catch(e){
+document.body.innerHTML="<h2>오류 발생</h2><pre>"+e+"</pre>";
+}
 </script>
+
 </body>
 </html>
