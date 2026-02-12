@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>관리자 - 유저 데이터 삭제</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--bad:#ef4444;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+    .btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .wrap{max-width:860px;margin:0 auto;padding:14px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    h2{margin:0 0 10px;font-size:20px}
+    .muted{color:var(--muted);font-size:13px}
+    .danger{color:var(--bad);font-weight:900;font-size:13px;white-space:pre-wrap}
+    input{
+      border:1px solid var(--line); border-radius:12px; padding:10px 12px;
+      font-weight:900; font-size:15px; width:260px; background:#fff;
+    }
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .log{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;white-space:pre-wrap;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:12px;line-height:1.4}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <button class="btn" onclick="location.href='roulette.html'">← 룰렛</button>
+    <button class="btn" onclick="location.href='log.html'">기록</button>
+    <button class="btn" onclick="location.href='lotto.html'">복권</button>
+    <div style="flex:1"></div>
+    <div class="muted" id="who"></div>
+    <button class="btn" id="logoutBtn">로그아웃</button>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <h2>관리자 - 유저 데이터 삭제</h2>
+      <div class="muted">
+        닉네임을 입력하면 아래 데이터가 함께 삭제됩니다:
+        counts(룰렛 기록), publicUsers(랭킹), lottoPlays(복권로그), users(프로필/티켓), nicknames(닉매핑)
+        <br><br>
+        ⚠️ 주의: 이 작업은 되돌릴 수 없습니다.
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="row">
+        <input id="nick" placeholder="삭제할 닉네임 입력" />
+        <button class="btn pri" id="checkBtn">대상 확인</button>
+        <button class="btn bad" id="deleteBtn" disabled>완전 삭제</button>
+      </div>
+
+      <div id="hint" class="muted" style="margin-top:10px"></div>
+      <div id="err" class="danger" style="display:none;margin-top:10px"></div>
+      <div id="out" class="log" style="display:none;margin-top:10px"></div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import {
+    getFirestore,
+    doc, getDoc, deleteDoc, setDoc,
+    collection, getDocs,
+    query, where, limit,
+    writeBatch
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936",
+    measurementId: "G-SPY41ZKXYQ"
+  };
+
+  const ADMIN_EMAILS = ["dori0223@gmail.com"]; // ✅ 너 관리자 이메일
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const $ = (id)=>document.getElementById(id);
+
+  const err = $("err");
+  const out = $("out");
+  const hint = $("hint");
+  const nickEl = $("nick");
+  const checkBtn = $("checkBtn");
+  const deleteBtn = $("deleteBtn");
+
+  function showErr(msg){
+    err.style.display = "block";
+    err.textContent = String(msg || "오류");
+  }
+  function clearErr(){
+    err.style.display = "none";
+    err.textContent = "";
+  }
+  function log(msg){
+    out.style.display = "block";
+    out.textContent += (out.textContent ? "\n" : "") + msg;
+  }
+  function clearLog(){
+    out.style.display = "none";
+    out.textContent = "";
+  }
+  function normNick(v){ return String(v ?? "").trim(); }
+
+  $("logoutBtn").onclick = async ()=>{
+    await signOut(auth);
+    location.replace("index.html");
+  };
+
+  // nicknames/{nickname} -> uid
+  async function getUidByNickname(nick){
+    const snap = await getDoc(doc(db, "nicknames", nick));
+    if(!snap.exists()) return null;
+    return snap.data()?.uid || null;
+  }
+
+  // ✅ counts/{nick}/types/*/items/* 전부 삭제
+  async function deleteCountsTree(nick){
+    const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
+    for(const t of typesSnap.docs){
+      const type = t.id;
+      const itemsCol = collection(db, "counts", nick, "types", type, "items");
+
+      while(true){
+        const itemsSnap = await getDocs(query(itemsCol, limit(450)));
+        if(itemsSnap.empty) break;
+
+        const batch = writeBatch(db);
+        itemsSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+
+      await deleteDoc(doc(db, "counts", nick, "types", type));
+    }
+    // 마지막에 nick 문서 삭제
+    await deleteDoc(doc(db, "counts", nick));
+  }
+
+  // ✅ lottoPlays에서 uid 동일한 문서 전부 삭제
+  async function deleteLottoPlaysByUid(uid){
+    const playsCol = collection(db, "lottoPlays");
+    while(true){
+      const snap = await getDocs(query(playsCol, where("uid","==",uid), limit(450)));
+      if(snap.empty) break;
+
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+
+  // ✅ 통합 삭제
+  async function deleteUserAllByNick(nick){
+    const uid = await getUidByNickname(nick);
+    if(!uid) throw new Error(`nicknames/${nick} 에 uid가 없습니다. (닉네임 매핑 확인 필요)`);
+
+    log(`대상 uid: ${uid}`);
+
+    log("1) counts 트리 삭제 중...");
+    await deleteCountsTree(nick);
+    log("   ✅ counts 삭제 완료");
+
+    log("2) publicUsers 삭제 중...");
+    await deleteDoc(doc(db, "publicUsers", uid));
+    log("   ✅ publicUsers 삭제 완료");
+
+    log("3) lottoPlays 삭제 중...");
+    await deleteLottoPlaysByUid(uid);
+    log("   ✅ lottoPlays 삭제 완료");
+
+    log("4) users 삭제 중...");
+    await deleteDoc(doc(db, "users", uid));
+    log("   ✅ users 삭제 완료");
+
+    log("5) nicknames 삭제 중...");
+    await deleteDoc(doc(db, "nicknames", nick));
+    log("   ✅ nicknames 삭제 완료");
+
+    log("✅ 전체 삭제 완료");
+  }
+
+  let isAdmin = false;
+  let meNick = "-";
+
+  onAuthStateChanged(auth, async (u)=>{
+    if(!u){ location.replace("index.html"); return; }
+    const email = String(u.email || "").toLowerCase();
+    isAdmin = ADMIN_EMAILS.includes(email);
+
+    // 표시용
+    try{
+      const meSnap = await getDoc(doc(db, "users", u.uid));
+      meNick = meSnap.exists() ? (meSnap.data()?.nickname || "-") : "-";
+    }catch(_){}
+
+    $("who").textContent = `${meNick} · ${isAdmin ? "admin" : "user"}`;
+
+    if(!isAdmin){
+      showErr("관리자만 접근 가능합니다.");
+      checkBtn.disabled = true;
+      deleteBtn.disabled = true;
+    }
+  });
+
+  let lastCheckedNick = null;
+
+  checkBtn.onclick = async ()=>{
+    clearErr(); clearLog(); hint.textContent = "";
+    deleteBtn.disabled = true;
+
+    try{
+      if(!isAdmin) throw new Error("관리자만 가능");
+      const nick = normNick(nickEl.value);
+      if(!nick) throw new Error("닉네임을 입력하세요.");
+
+      const uid = await getUidByNickname(nick);
+      if(!uid) throw new Error("이 닉네임은 nicknames 컬렉션에 없습니다.");
+
+      // counts 존재 여부
+      const c = await getDoc(doc(db, "counts", nick));
+      // publicUsers/users 존재 여부
+      const pu = await getDoc(doc(db, "publicUsers", uid));
+      const us = await getDoc(doc(db, "users", uid));
+
+      hint.textContent =
+        `대상 확인됨 ✅  nick="${nick}", uid="${uid}"  |  counts:${c.exists()? "O":"X"}  users:${us.exists()? "O":"X"}  publicUsers:${pu.exists()? "O":"X"}\n` +
+        `완전 삭제를 누르면 counts/랭킹/복권로그/프로필/닉매핑을 전부 지웁니다.`;
+
+      lastCheckedNick = nick;
+      deleteBtn.disabled = false;
+
+    }catch(e){
+      showErr(e?.message || e);
+    }
+  };
+
+  deleteBtn.onclick = async ()=>{
+    clearErr(); clearLog();
+
+    try{
+      if(!isAdmin) throw new Error("관리자만 가능");
+      const nick = normNick(nickEl.value);
+      if(!nick) throw new Error("닉네임을 입력하세요.");
+      if(nick !== lastCheckedNick) throw new Error("안전상 ‘대상 확인’을 먼저 다시 눌러주세요.");
+
+      // 최종 확인(브라우저 confirm)
+      const ok = confirm(`[삭제 확인]\n닉네임 "${nick}" 의 기록/랭킹/로그/프로필이 전부 삭제됩니다.\n진짜 진행할까요?`);
+      if(!ok) return;
+
+      checkBtn.disabled = true;
+      deleteBtn.disabled = true;
+
+      await deleteUserAllByNick(nick);
+
+      hint.textContent = "삭제 완료 ✅";
+      lastCheckedNick = null;
+
+    }catch(e){
+      showErr(e?.message || e);
+    }finally{
+      checkBtn.disabled = false;
+    }
+  };
+</script>
+</body>
+</html>
