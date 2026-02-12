@@ -13,6 +13,7 @@
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
     h2{margin:0 0 10px;font-size:20px}
     .muted{color:var(--muted);font-size:13px}
+    .danger{color:var(--danger);font-weight:900;font-size:13px}
 
     .accHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;cursor:pointer}
     .accHead b{font-size:16px}
@@ -51,6 +52,7 @@
 <body>
   <div class="top">
     <button class="btn" onclick="location.href='roulette.html'">← 룰렛 페이지</button>
+    <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
     <div style="flex:1"></div>
     <div class="muted" id="who"></div>
     <button class="btn" id="refreshBtn">새로고침</button>
@@ -62,6 +64,7 @@
       <div class="muted" id="modeText"></div>
       <div style="height:10px"></div>
       <div class="muted" id="loadState">불러오는 중…</div>
+      <div class="danger" id="errBox" style="margin-top:8px; display:none;"></div>
     </div>
 
     <div id="accBox"></div>
@@ -89,7 +92,23 @@
   const $ = (id)=>document.getElementById(id);
 
   function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function showError(e){
+    const box = $("errBox");
+    box.style.display = "block";
+    const code = e?.code ? `(${e.code}) ` : "";
+    box.textContent = "오류: " + code + (e?.message || e);
+  }
+  function clearError(){
+    const box = $("errBox");
+    box.style.display = "none";
+    box.textContent = "";
+  }
+
+  function normNick(v){
+    return String(v ?? "").trim();
   }
 
   async function getProfile(uid){
@@ -148,103 +167,125 @@
 
   onAuthStateChanged(auth, async (u)=>{
     if(!u){ location.replace("index.html"); return; }
-    profile = await getProfile(u.uid);
-    if(!profile){ location.replace("index.html"); return; }
 
-    isAdmin = (profile.role === "admin") || (String(profile.nickname).trim() === "도리");
-    $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
-    $("modeText").textContent =
-      isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+    try{
+      profile = await getProfile(u.uid);
+      if(!profile){ location.replace("index.html"); return; }
 
-    render();
+      const myNick = normNick(profile.nickname);
+      if(!myNick){
+        $("loadState").textContent = "닉네임이 비어있어요. 다시 가입/프로필 확인이 필요해요.";
+        showError({ message: "users/{uid} 문서에 nickname 값이 없거나 공백입니다." });
+        return;
+      }
+
+      isAdmin = (profile.role === "admin") || (myNick === "도리");
+      $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
+      $("modeText").textContent =
+        isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+
+      render();
+    }catch(e){
+      $("loadState").textContent = "초기화 실패";
+      showError(e);
+    }
   });
 
   async function render(){
+    clearError();
     $("loadState").textContent = "불러오는 중…";
     const accBox = $("accBox");
     accBox.innerHTML = "";
 
-    const nicks = (await getNickList(isAdmin, profile.nickname)).sort((a,b)=>a.localeCompare(b,"ko"));
-    if(nicks.length === 0){
-      $("loadState").textContent = "표시할 기록이 없어요.";
-      accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
-      return;
-    }
+    try{
+      const myNick = normNick(profile?.nickname);
+      const nicks = (await getNickList(isAdmin, myNick)).sort((a,b)=>a.localeCompare(b,"ko"));
 
-    let total = 0;
-
-    for(const nick of nicks){
-      const rows = await getRowsForNick(nick);
-      const nickSum = rows.reduce((a,b)=>a + (b.v||0), 0);
-      total += nickSum;
-
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `
-        <div class="accHead">
-          <b>${escapeHtml(nick)}</b>
-          <span class="badge">${nickSum}회</span>
-        </div>
-        <div class="panel"></div>
-      `;
-
-      const panel = card.querySelector(".panel");
-      card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
-
-      const headTable = document.createElement("div");
-      headTable.className = "table";
-      headTable.innerHTML = `
-        <div class="tr">
-          <div>항목 이름</div>
-          <div class="tdRight">수량</div>
-          <div class="tdRight">(+/-)</div>
-        </div>
-      `;
-
-      const grid = document.createElement("div");
-      grid.className = "rowsGrid";
-
-      if(rows.length === 0){
-        grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
-      }else{
-        for(const r of rows){
-          const item = document.createElement("div");
-          item.className = "itemCard";
-          item.innerHTML = `
-            <div class="itemLeft">
-              <b>${escapeHtml(r.item)}</b>
-              <div class="small">${escapeHtml(r.type)}</div>
-            </div>
-            <div class="itemMid">${r.v}</div>
-            <div class="itemRight">
-              <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
-              <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
-            </div>
-          `;
-
-          item.querySelector('[data-act="plus"]').onclick = async (ev)=>{
-            ev.stopPropagation();
-            if(!isAdmin) return;
-            await applyDelta(nick, r.type, r.itemId, r.item, +1);
-            render();
-          };
-          item.querySelector('[data-act="minus"]').onclick = async (ev)=>{
-            ev.stopPropagation();
-            if(!isAdmin) return;
-            await applyDelta(nick, r.type, r.itemId, r.item, -1);
-            render();
-          };
-
-          grid.appendChild(item);
-        }
+      if(nicks.length === 0){
+        $("loadState").textContent = "표시할 기록이 없어요.";
+        accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
+        return;
       }
 
-      panel.appendChild(headTable);
-      panel.appendChild(grid);
-      accBox.appendChild(card);
-    }
+      let total = 0;
 
-    $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${total}회)`;
+      for(const nick of nicks){
+        const rows = await getRowsForNick(nick);
+        const nickSum = rows.reduce((a,b)=>a + (b.v||0), 0);
+        total += nickSum;
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="accHead">
+            <b>${escapeHtml(nick)}</b>
+            <span class="badge">${nickSum}회</span>
+          </div>
+          <div class="panel"></div>
+        `;
+
+        const panel = card.querySelector(".panel");
+        card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
+
+        const headTable = document.createElement("div");
+        headTable.className = "table";
+        headTable.innerHTML = `
+          <div class="tr">
+            <div>항목 이름</div>
+            <div class="tdRight">수량</div>
+            <div class="tdRight">(+/-)</div>
+          </div>
+        `;
+
+        const grid = document.createElement("div");
+        grid.className = "rowsGrid";
+
+        if(rows.length === 0){
+          grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+        }else{
+          for(const r of rows){
+            const item = document.createElement("div");
+            item.className = "itemCard";
+            item.innerHTML = `
+              <div class="itemLeft">
+                <b>${escapeHtml(r.item)}</b>
+                <div class="small">${escapeHtml(r.type)}</div>
+              </div>
+              <div class="itemMid">${r.v}</div>
+              <div class="itemRight">
+                <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
+                <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
+              </div>
+            `;
+
+            item.querySelector('[data-act="plus"]').onclick = async (ev)=>{
+              ev.stopPropagation();
+              if(!isAdmin) return;
+              await applyDelta(nick, r.type, r.itemId, r.item, +1);
+              render();
+            };
+            item.querySelector('[data-act="minus"]').onclick = async (ev)=>{
+              ev.stopPropagation();
+              if(!isAdmin) return;
+              await applyDelta(nick, r.type, r.itemId, r.item, -1);
+              render();
+            };
+
+            grid.appendChild(item);
+          }
+        }
+
+        panel.appendChild(headTable);
+        panel.appendChild(grid);
+        accBox.appendChild(card);
+      }
+
+      $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${total}회)`;
+    }catch(e){
+      // ✅ 여기서 멈추던 문제를 "에러 표시"로 바꿈
+      $("loadState").textContent = "불러오기 실패";
+      showError(e);
+    }
   }
 </script>
 </body>
