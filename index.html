@@ -14,9 +14,11 @@
     label{display:block;font-weight:900;margin:12px 0 6px}
     input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 12px;font-weight:900;background:#fff}
     .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer;text-decoration:none;color:inherit;display:inline-flex;align-items:center;justify-content:center}
     .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
     .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.45}
+    .hr{height:1px;background:var(--line);margin:14px 0}
+    .badge{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}
   </style>
 </head>
 <body>
@@ -26,7 +28,7 @@
       <div class="muted">폰/PC 어디서든 동일 기록을 보려면 Firebase 로그인으로 동작해요.</div>
 
       <label>이메일</label>
-      <input id="email" placeholder="예) dori0223@gmail.com" autocomplete="username" inputmode="email" />
+      <input id="email" placeholder="예) example@gmail.com" autocomplete="username" inputmode="email" />
 
       <label>비밀번호</label>
       <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password" />
@@ -41,10 +43,28 @@
 
       <div class="note">
         • 닉네임/이메일 중복 불가<br/>
-        • (권장) 관리자는 닉네임이 아니라 “관리자 이메일”로 판별하세요
+        • 관리자는 이메일 기준으로 구분하세요
       </div>
 
       <div class="muted" id="msg" style="margin-top:12px;"></div>
+
+      <div class="hr"></div>
+
+      <!-- 로그인 상태 표시 -->
+      <div id="signedOut" class="muted">현재 상태: 로그아웃</div>
+
+      <div id="signedIn" style="display:none;">
+        <div class="row">
+          <span class="badge" id="who"></span>
+        </div>
+
+        <div class="row">
+          <a class="btn pri" href="roulette.html">🎯 룰렛으로 가기</a>
+          <a class="btn" href="lotto.html">🎟️ 복권으로 가기</a>
+          <button class="btn" id="logoutBtn">로그아웃</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -52,15 +72,16 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import {
     getAuth,
+    onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    deleteUser
+    deleteUser,
+    signOut
   } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
   import {
     getFirestore,
     doc,
-    setDoc,
     runTransaction,
     serverTimestamp
   } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
@@ -82,19 +103,26 @@
   const $ = (id)=>document.getElementById(id);
   const msg = (t)=>{ $("msg").textContent = t; };
 
-  function normEmail(v){
-    return String(v || "").trim().toLowerCase();
-  }
+  const normEmail = (v)=> String(v || "").trim().toLowerCase();
+  const normNick  = (v)=> String(v || "").trim();
 
-  function normNick(v){
-    return String(v || "").trim();
-  }
+  onAuthStateChanged(auth, (user)=>{
+    if(user){
+      $("signedOut").style.display = "none";
+      $("signedIn").style.display = "block";
+      $("who").textContent = `로그인됨: ${user.email}`;
+    }else{
+      $("signedOut").style.display = "block";
+      $("signedIn").style.display = "none";
+      $("who").textContent = "";
+    }
+  });
 
   $("loginBtn").onclick = async ()=>{
     try{
       const email = normEmail($("email").value);
       const pw = $("pw").value;
-      if(!email || !pw) return msg("이메일/비밀번호를 입력해줘.");
+      if(!email || !pw) return msg("이메일/비밀번호 입력해줘.");
 
       await signInWithEmailAndPassword(auth, email, pw);
       location.replace("roulette.html");
@@ -109,37 +137,28 @@
       const pw = $("pw").value;
       const nickname = normNick($("nick").value);
 
-      if(!email || !pw || !nickname) return msg("이메일/비밀번호/닉네임을 모두 입력해줘.");
+      if(!email || !pw || !nickname) return msg("모두 입력해줘.");
 
-      // 1) Auth 계정 생성
       const cred = await createUserWithEmailAndPassword(auth, email, pw);
       const uid = cred.user.uid;
 
-      // 2) Firestore: nicknames/{nickname} 선점 + users/{uid} 생성 (트랜잭션)
-      //    - nicknames 문서가 이미 있으면 즉시 실패 → 닉네임 중복 완벽 차단
       try{
         await runTransaction(db, async (tx) => {
           const nickRef = doc(db, "nicknames", nickname);
-          const nickSnap = await tx.get(nickRef);
-          if (nickSnap.exists()) {
-            throw new Error("이미 사용 중인 닉네임이야.");
-          }
+          const snap = await tx.get(nickRef);
+          if (snap.exists()) throw new Error("이미 사용 중인 닉네임");
 
-          // 닉네임 선점
           tx.set(nickRef, { uid, createdAt: serverTimestamp() });
 
-          // 유저 프로필 생성 (role은 무조건 user로만 생성)
-          const userRef = doc(db, "users", uid);
-          tx.set(userRef, {
+          tx.set(doc(db,"users",uid),{
             email,
             nickname,
-            role: "user",
+            role:"user",
             createdAt: serverTimestamp()
           });
         });
-      } catch(err){
-        // Firestore가 실패하면 방금 만든 Auth 계정도 삭제해서 깔끔하게 롤백
-        try{ await deleteUser(cred.user); }catch(_){}
+      }catch(err){
+        try{ await deleteUser(cred.user);}catch(_){}
         throw err;
       }
 
@@ -147,6 +166,10 @@
     }catch(e){
       msg("회원가입 실패: " + (e?.message || e));
     }
+  };
+
+  $("logoutBtn").onclick = async ()=>{
+    await signOut(auth);
   };
 </script>
 </body>
