@@ -1,207 +1,76 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>로그인</title>
-  <style>
-    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;}
-    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
-    .wrap{max-width:520px;margin:0 auto;padding:18px;}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
-    h1{margin:0 0 6px;font-size:22px}
-    .muted{color:var(--muted);font-size:13px}
-    label{display:block;font-weight:900;margin:12px 0 6px}
-    input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 12px;font-weight:900;background:#fff}
-    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer;text-decoration:none;color:inherit;display:inline-flex;align-items:center;justify-content:center}
-    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
-    .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.45}
-    .hr{height:1px;background:var(--line);margin:14px 0}
-    .badge{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>로그인 / 회원가입</h1>
-      <div class="muted">폰/PC 어디서든 동일 기록을 보려면 Firebase 로그인으로 동작해요.</div>
+<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
-      <label>이메일</label>
-      <input id="email" placeholder="예) example@gmail.com" autocomplete="username" inputmode="email" />
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+  authDomain: "roulette-b5455.firebaseapp.com",
+  projectId: "roulette-b5455",
+  storageBucket: "roulette-b5455.firebasestorage.app",
+  messagingSenderId: "728191308035",
+  appId: "1:728191308035:web:b14b46c38bbe0261969936"
+};
 
-      <label>비밀번호</label>
-      <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password" />
+firebase.initializeApp(firebaseConfig);
 
-      <label>닉네임(회원가입 시)</label>
-      <input id="nick" placeholder="예) 도리" />
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-      <div class="row">
-        <button class="btn pri" id="loginBtn">로그인</button>
-        <button class="btn" id="signupBtn">회원가입</button>
-      </div>
+const emailEl = document.getElementById("email");
+const pwEl = document.getElementById("pw");
+const nickEl = document.getElementById("nick");
+const msgEl = document.getElementById("msg");
 
-      <div class="note">
-        • 닉네임/이메일 중복 불가<br/>
-        • 관리자는 이메일 기준으로 구분하세요
-      </div>
+function msg(t){ msgEl.textContent = t; }
 
-      <div class="muted" id="msg" style="margin-top:12px;"></div>
-
-      <div class="hr"></div>
-
-      <!-- 로그인 상태 표시 -->
-      <div id="signedOut" class="muted">현재 상태: 로그아웃</div>
-
-      <div id="signedIn" style="display:none;">
-        <div class="row">
-          <span class="badge" id="who"></span>
-        </div>
-
-        <div class="row">
-          <a class="btn pri" href="roulette.html">🎯 룰렛으로 가기</a>
-          <a class="btn" href="lotto.html">🎟️ 복권으로 가기</a>
-          <button class="btn" id="logoutBtn">로그아웃</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import {
-    getAuth,
-    onAuthStateChanged,
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    deleteUser,
-    signOut
-  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-
-  import {
-    getFirestore,
-    doc,
-    getDoc,
-    runTransaction,
-    serverTimestamp
-  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-    authDomain: "roulette-b5455.firebaseapp.com",
-    projectId: "roulette-b5455",
-    storageBucket: "roulette-b5455.firebasestorage.app",
-    messagingSenderId: "728191308035",
-    appId: "1:728191308035:web:b14b46c38bbe0261969936",
-    measurementId: "G-SPY41ZKXYQ"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  const $ = (id)=>document.getElementById(id);
-  const msg = (t)=>{ $("msg").textContent = t; };
-
-  const normEmail = (v)=> String(v || "").trim().toLowerCase();
-
-  // ✅ 닉네임 정규화: 앞뒤 공백 제거 + 중간 연속 공백 1개로 + 유니코드 정규화(겉보기 같은데 다른 글자 방지)
-  const normNick = (v)=> String(v || "")
-    .normalize("NFC")
-    .trim()
-    .replace(/\s+/g, " ");
-
-  // ✅ 닉네임 기본 규칙(원하면 더 빡세게 가능)
-  function validateNickname(nick){
-    if(!nick) return "닉네임을 입력해줘.";
-    if(nick.length < 2 || nick.length > 12) return "닉네임은 2~12글자로 해줘.";
-    // 금지 문자: 슬래시(문서 경로 깨짐), 앞뒤 점 등 문제 소지
-    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
-    return "";
+document.getElementById("loginBtn").onclick = async ()=>{
+  try{
+    await auth.signInWithEmailAndPassword(
+      emailEl.value.trim(),
+      pwEl.value
+    );
+    location.href = "roulette.html";
+  }catch(e){
+    msg("로그인 실패: " + e.message);
   }
+};
 
-  onAuthStateChanged(auth, async (user)=>{
-    if(user){
-      $("signedOut").style.display = "none";
-      $("signedIn").style.display = "block";
-      $("who").textContent = `로그인됨: ${user.email}`;
-    }else{
-      $("signedOut").style.display = "block";
-      $("signedIn").style.display = "none";
-      $("who").textContent = "";
-    }
-  });
+document.getElementById("signupBtn").onclick = async ()=>{
+  try{
+    const cred = await auth.createUserWithEmailAndPassword(
+      emailEl.value.trim(),
+      pwEl.value
+    );
 
-  $("loginBtn").onclick = async ()=>{
-    try{
-      const email = normEmail($("email").value);
-      const pw = $("pw").value;
-      if(!email || !pw) return msg("이메일/비밀번호 입력해줘.");
+    await db.collection("users").doc(cred.user.uid).set({
+      email: emailEl.value.trim(),
+      nickname: nickEl.value.trim(),
+      role: "user",
+      xp: 0,
+      level: 1,
+      lottoTickets: 0,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-      await signInWithEmailAndPassword(auth, email, pw);
+    location.href = "roulette.html";
+  }catch(e){
+    msg("회원가입 실패: " + e.message);
+  }
+};
 
-      // ✅ 로그인 후에는 바로 룰렛으로 보내기(기존 유지)
-      location.replace("roulette.html");
-    }catch(e){
-      msg("로그인 실패: " + (e?.message || e));
-    }
-  };
+auth.onAuthStateChanged(user=>{
+  if(user){
+    document.getElementById("signedOut").style.display="none";
+    document.getElementById("signedIn").style.display="block";
+    document.getElementById("who").textContent = "로그인됨: " + user.email;
+  }else{
+    document.getElementById("signedOut").style.display="block";
+    document.getElementById("signedIn").style.display="none";
+  }
+});
 
-  $("signupBtn").onclick = async ()=>{
-    try{
-      const email = normEmail($("email").value);
-      const pw = $("pw").value;
-      const nickname = normNick($("nick").value);
-
-      if(!email || !pw || !nickname) return msg("모두 입력해줘.");
-
-      const nickErr = validateNickname(nickname);
-      if(nickErr) return msg(nickErr);
-
-      const cred = await createUserWithEmailAndPassword(auth, email, pw);
-      const uid = cred.user.uid;
-
-      try{
-        await runTransaction(db, async (tx) => {
-          const nickRef = doc(db, "nicknames", nickname);
-          const nickSnap = await tx.get(nickRef);
-          if (nickSnap.exists()) throw new Error("이미 사용 중인 닉네임");
-
-          // nicknames/{nickname} 선점
-          tx.set(nickRef, { uid, createdAt: serverTimestamp() });
-
-          // users/{uid} 저장
-          tx.set(doc(db,"users",uid),{
-            email,
-            nickname,
-            role:"user",
-            createdAt: serverTimestamp()
-          });
-        });
-
-        // ✅ “가입했는데 nicknames가 없다” 같은 비정상 방지용 2차 확인(짧게)
-        const check = await getDoc(doc(db,"nicknames", nickname));
-        if(!check.exists()){
-          // 이 경우는 거의 없지만, 생기면 사용자 입장에선 큰 문제라서 안전하게 중단
-          throw new Error("닉네임 저장이 확인되지 않았어. 다시 시도해줘.");
-        }
-
-      }catch(err){
-        // 트랜잭션 실패면 Auth 계정도 롤백 시도
-        try{ await deleteUser(cred.user);}catch(_){}
-        throw err;
-      }
-
-      location.replace("roulette.html");
-    }catch(e){
-      msg("회원가입 실패: " + (e?.message || e));
-    }
-  };
-
-  $("logoutBtn").onclick = async ()=>{
-    await signOut(auth);
-  };
+document.getElementById("logoutBtn").onclick = async ()=>{
+  await auth.signOut();
+};
 </script>
-</body>
-</html>
