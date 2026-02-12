@@ -6,188 +6,200 @@
 <title>기록</title>
 
 <style>
-:root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;}
-body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
-.top{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);padding:10px;display:flex;gap:10px;align-items:center;}
-.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
-.wrap{max-width:900px;margin:0 auto;padding:14px;}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0;}
-.muted{color:var(--muted);font-size:13px}
-.danger{color:var(--danger);font-weight:700;font-size:13px}
-.badge{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-weight:700}
-.itemRow{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;background:#fff}
-.itemBtns{display:flex;gap:6px}
-.smallBtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;font-weight:700;cursor:pointer}
+:root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--text);}
+.top{position:sticky;top:0;background:#f6f7fb;border-bottom:1px solid var(--line);padding:10px;display:flex;gap:8px;align-items:center;z-index:10}
+.btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 12px;font-weight:700;cursor:pointer}
+.wrap{max-width:900px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
+.accHead{display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);border-radius:14px;cursor:pointer}
+.badge{background:#eef2ff;border-radius:999px;padding:6px 10px;font-weight:700}
+.panel{display:none;margin-top:10px}
+.panel.on{display:block}
+
+.tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;font-weight:700;background:#fff}
+.tab.on{background:#111827;color:#fff}
+
+.rowsGrid{display:grid;grid-template-columns:1fr;gap:10px}
+@media(min-width:740px){.rowsGrid{grid-template-columns:1fr 1fr}}
+
+.itemCard{border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;justify-content:space-between;align-items:center}
+.itemLeft b{display:block}
+.itemRight{display:flex;gap:6px}
+.mini{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;font-weight:700;cursor:pointer}
 </style>
 </head>
+
 <body>
 
 <div class="top">
 <button class="btn" onclick="location.href='roulette.html'">← 룰렛</button>
 <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
 <div style="flex:1"></div>
-<div id="who" class="muted"></div>
-<button class="btn" onclick="loadData()">새로고침</button>
+<div id="who"></div>
+<button class="btn" onclick="render()">새로고침</button>
 </div>
 
 <div class="wrap">
-<div class="card">
-<h3>기록 (항목별 카운트)</h3>
-<div id="loadState" class="muted">불러오는 중...</div>
-<div id="errBox" class="danger" style="display:none;"></div>
+<div id="accBox"></div>
 </div>
 
-<div id="dataBox"></div>
-</div>
-
-<!-- Firebase compat (Safari 안정형) -->
+<!-- ✅ Firebase compat (Safari 안정판) -->
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-  authDomain: "roulette-b5455.firebaseapp.com",
-  projectId: "roulette-b5455"
+
+const firebaseConfig={
+apiKey:"AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+authDomain:"roulette-b5455.firebaseapp.com",
+projectId:"roulette-b5455",
 };
 
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+const auth=firebase.auth();
+const db=firebase.firestore();
 
-const ADMIN_EMAILS = ["dori0223@gmail.com"];
+const ADMIN_EMAILS=["dori0223@gmail.com"];
 
-let currentUser = null;
-let isAdmin = false;
+let isAdmin=false;
+let myNick="";
 
-function showError(e){
-  console.error(e);
-  const box = document.getElementById("errBox");
-  box.style.display = "block";
-  box.textContent = "오류: " + (e.message || e);
-}
-
-function clearError(){
-  const box = document.getElementById("errBox");
-  box.style.display = "none";
-  box.textContent = "";
-}
+function norm(v){return String(v||"").trim()}
 
 auth.onAuthStateChanged(async user=>{
-  if(!user){
-    location.replace("index.html");
-    return;
-  }
+if(!user){location.href="index.html";return;}
 
-  currentUser = user;
-  isAdmin = ADMIN_EMAILS.includes((user.email||"").toLowerCase());
+isAdmin=ADMIN_EMAILS.includes((user.email||"").toLowerCase());
+document.getElementById("who").textContent=user.email+" · "+(isAdmin?"admin":"user");
 
-  document.getElementById("who").textContent =
-    (user.email || "") + (isAdmin ? " · admin" : "");
+const snap=await db.collection("users").doc(user.uid).get();
+if(!snap.exists){return;}
+myNick=norm(snap.data().nickname);
 
-  loadData();
+render();
 });
 
-async function loadData(){
-  clearError();
-  document.getElementById("loadState").textContent = "불러오는 중...";
-  document.getElementById("dataBox").innerHTML = "";
+async function render(){
+const box=document.getElementById("accBox");
+box.innerHTML="불러오는 중...";
 
-  try{
-    const userSnap = await db.collection("users").doc(currentUser.uid).get();
-    if(!userSnap.exists){
-      document.getElementById("loadState").textContent = "유저 문서 없음";
-      return;
-    }
-
-    const myNick = userSnap.data().nickname;
-
-    let nickList = [];
-
-    if(isAdmin){
-      const snap = await db.collection("counts").get();
-      snap.forEach(d=>nickList.push(d.id));
-    }else{
-      nickList = [myNick];
-    }
-
-    if(nickList.length===0){
-      document.getElementById("loadState").textContent="기록 없음";
-      return;
-    }
-
-    let totalSum = 0;
-
-    for(const nick of nickList){
-      const card = document.createElement("div");
-      card.className="card";
-      card.innerHTML = `<b>${nick}</b>`;
-      document.getElementById("dataBox").appendChild(card);
-
-      const typesSnap = await db.collection("counts").doc(nick).collection("types").get();
-
-      for(const typeDoc of typesSnap.docs){
-        const type = typeDoc.id;
-
-        const itemsSnap = await db.collection("counts")
-          .doc(nick).collection("types")
-          .doc(type).collection("items").get();
-
-        itemsSnap.forEach(itemDoc=>{
-          const data = itemDoc.data();
-          const count = data.count || 0;
-          totalSum += count;
-
-          const row = document.createElement("div");
-          row.className="itemRow";
-          row.innerHTML=`
-            <div>${data.itemText} (${type})</div>
-            <div class="itemBtns">
-              <span>${count}</span>
-              ${isAdmin ? `
-              <button class="smallBtn" onclick="updateCount('${nick}','${type}','${itemDoc.id}','${data.itemText}',1)">+</button>
-              <button class="smallBtn" onclick="updateCount('${nick}','${type}','${itemDoc.id}','${data.itemText}',-1)">-</button>
-              ` : ""}
-            </div>
-          `;
-          card.appendChild(row);
-        });
-      }
-    }
-
-    document.getElementById("loadState").textContent =
-      "불러오기 완료 ✅ (합산 총 " + totalSum + "회)";
-  }
-  catch(e){
-    document.getElementById("loadState").textContent="불러오기 실패";
-    showError(e);
-  }
+let nicks=[];
+if(isAdmin){
+const snap=await db.collection("counts").get();
+nicks=snap.docs.map(d=>d.id);
+}else{
+nicks=[myNick];
 }
 
-async function updateCount(nick,type,itemId,itemText,delta){
-  try{
-    const ref = db.collection("counts")
-      .doc(nick).collection("types")
-      .doc(type).collection("items").doc(itemId);
+box.innerHTML="";
 
-    await db.runTransaction(async tx=>{
-      const snap = await tx.get(ref);
-      if(!snap.exists && delta>0){
-        tx.set(ref,{itemText,count:delta});
-      }else if(snap.exists){
-        const next = Math.max(0,(snap.data().count||0)+delta);
-        if(next===0) tx.delete(ref);
-        else tx.update(ref,{count:next});
-      }
-    });
+for(const nick of nicks){
+const byType={normal:[],noble:[],time:[]};
 
-    loadData();
-  }
-  catch(e){
-    showError(e);
-  }
+const types=await db.collection("counts").doc(nick).collection("types").get();
+for(const t of types.docs){
+const items=await db.collection("counts").doc(nick)
+.collection("types").doc(t.id)
+.collection("items").get();
+
+items.forEach(it=>{
+byType[t.id].push({...it.data(),id:it.id,type:t.id});
+});
 }
+
+const total=[...byType.normal,...byType.noble,...byType.time]
+.reduce((a,b)=>a+(b.count||0),0);
+
+const card=document.createElement("div");
+card.className="card";
+
+card.innerHTML=`
+<div class="accHead">
+<b>${nick}</b>
+<span class="badge">${total}회</span>
+</div>
+<div class="panel"></div>
+`;
+
+const panel=card.querySelector(".panel");
+card.querySelector(".accHead").onclick=()=>panel.classList.toggle("on");
+
+const tabs=document.createElement("div");
+tabs.className="tabs";
+panel.appendChild(tabs);
+
+const grid=document.createElement("div");
+grid.className="rowsGrid";
+panel.appendChild(grid);
+
+function renderType(type){
+grid.innerHTML="";
+tabs.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
+tabs.querySelector(`[data-type="${type}"]`).classList.add("on");
+
+const rows=byType[type];
+if(rows.length===0){grid.innerHTML="항목 없음";return;}
+
+rows.sort((a,b)=>b.count-a.count);
+
+for(const r of rows){
+const item=document.createElement("div");
+item.className="itemCard";
+item.innerHTML=`
+<div class="itemLeft">
+<b>${r.itemText}</b>
+<div>${r.count}</div>
+</div>
+<div class="itemRight">
+<button class="mini" ${isAdmin?"":"disabled"} data-act="plus">+</button>
+<button class="mini" ${isAdmin?"":"disabled"} data-act="minus">-</button>
+</div>
+`;
+
+const countEl=item.querySelector(".itemLeft div");
+
+if(isAdmin){
+item.querySelector('[data-act="plus"]').onclick=async()=>{
+await db.collection("counts").doc(nick)
+.collection("types").doc(type)
+.collection("items").doc(r.id)
+.update({count:r.count+1});
+r.count++;
+countEl.textContent=r.count;
+};
+
+item.querySelector('[data-act="minus"]').onclick=async()=>{
+if(r.count<=0)return;
+await db.collection("counts").doc(nick)
+.collection("types").doc(type)
+.collection("items").doc(r.id)
+.update({count:r.count-1});
+r.count--;
+countEl.textContent=r.count;
+};
+}
+
+grid.appendChild(item);
+}
+}
+
+["normal","noble","time"].forEach(t=>{
+const btn=document.createElement("div");
+btn.className="tab";
+btn.dataset.type=t;
+btn.textContent=t;
+btn.onclick=()=>renderType(t);
+tabs.appendChild(btn);
+});
+
+renderType("normal");
+box.appendChild(card);
+}
+}
+
 </script>
 </body>
 </html>
