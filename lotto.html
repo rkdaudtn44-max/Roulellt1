@@ -31,7 +31,6 @@
     th{color:var(--muted);font-weight:700}
     .right{text-align:right}
 
-    /* ✅ 자동횟수 입력 스타일(기존 틀 안 깨기) */
     .countInput{
       width:90px;
       border:1px solid var(--line);
@@ -69,20 +68,15 @@
 
           <span class="pill">티켓 <b id="ticketCount">0</b></span>
 
-          <!-- ✅ 자동 돌리기 횟수 -->
           <span class="pill">자동횟수 <b style="display:none"> </b></span>
           <input id="autoCount" class="countInput" type="number" min="1" max="999" value="1" inputmode="numeric" />
 
-          <!-- ✅ 1회 돌리기 -->
           <button class="btn pri" id="playBtn">1회</button>
-          <!-- ✅ 자동 연속 돌리기 -->
           <button class="btn" id="autoBtn">자동</button>
         </div>
 
-        <!-- ✅ 진행/완료 표시 -->
         <div class="muted" id="autoProgress" style="display:none;margin-top:6px;"></div>
 
-        <!-- ✅ 티켓 없을 때 안내 -->
         <div class="muted" id="ticketHint" style="display:none;margin-top:6px;">
           티켓이 없습니다. 룰렛에서 “복권” 항목을 받아야 사용 가능합니다.
         </div>
@@ -167,6 +161,19 @@
       errBox.textContent = "";
     };
 
+    // ✅ 닉네임 정규화 통일(룰렛/로그/index와 동일)
+    function normNick(v){
+      return String(v ?? "")
+        .normalize("NFC")
+        .trim()
+        .replace(/\s+/g, " ");
+    }
+    function validateNickForDocId(nick){
+      if(!nick) return "닉네임이 비어있어요.";
+      if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
+      return "";
+    }
+
     // ✅ 티켓 UI
     const ticketCountEl = $("ticketCount");
     const ticketHint = $("ticketHint");
@@ -193,14 +200,14 @@
     function syncTicketUI(){
       ticketCountEl.textContent = String(myTickets || 0);
       if((myTickets||0) <= 0){
-        setBusy(false); // 내부에서 버튼 비활성 처리
+        setBusy(false);
         ticketHint.style.display = "block";
       }else{
         ticketHint.style.display = "none";
       }
     }
 
-    // ----- 레벨 계산
+    // ----- 레벨 계산(기존 유지)
     function calcLevelFromXp(xp){
       xp = Math.max(0, Number(xp||0));
       const L = Math.floor((Math.sqrt(1 + 0.08 * xp) - 1) / 2);
@@ -267,11 +274,12 @@
       return m;
     }
 
+    // ✅ 경험치 지급표 변경(요청 반영)
     function xpByMatch(m){
-      if(m===3) return 50000;
-      if(m===2) return 10000;
-      if(m===1) return 5000;
-      return 1000;
+      if(m===3) return 1000;
+      if(m===2) return 500;
+      if(m===1) return 100;
+      return 10;
     }
 
     function safeStr(v){ return String(v ?? "").trim(); }
@@ -285,7 +293,11 @@
 
       if(!snap.exists()){
         const email = safeStr(user.email);
-        const nickGuess = email ? email.split("@")[0] : (user.displayName || "사용자");
+        const nickGuessRaw = email ? email.split("@")[0] : (user.displayName || "사용자");
+        const nickGuess = normNick(nickGuessRaw);
+
+        const err = validateNickForDocId(nickGuess);
+        if(err) throw new Error("닉네임 오류: " + err);
 
         await setDoc(userRef, {
           uid: user.uid,
@@ -317,18 +329,24 @@
       if(data.level === undefined) patch.level = calcLevelFromXp(data.xp ?? 0);
       if(data.lottoTickets === undefined) patch.lottoTickets = 0;
 
+      // ✅ nickname 정규화(겉보기 같은데 다른 닉네임 방지)
+      const normalizedNick = normNick(data.nickname || (user.email ? user.email.split("@")[0] : "사용자"));
+      const nickErr = validateNickForDocId(normalizedNick);
+      if(nickErr) throw new Error("닉네임 오류: " + nickErr);
+
+      if((data.nickname || "") !== normalizedNick) patch.nickname = normalizedNick;
+
       if(Object.keys(patch).length){
         patch.updatedAt = serverTimestamp();
         await setDoc(userRef, patch, { merge: true });
       }
 
-      const nick = data.nickname || (user.email ? user.email.split("@")[0] : "사용자");
       const xp = Number((data.xp ?? patch.xp) ?? 0);
       const level = Number((data.level ?? patch.level) ?? calcLevelFromXp(xp));
 
       await setDoc(pubRef, {
         uid: user.uid,
-        nickname: nick,
+        nickname: normalizedNick,
         xp,
         level,
         updatedAt: serverTimestamp()
@@ -342,14 +360,15 @@
       const snap = await getDoc(userRef);
       const data = snap.data() || {};
 
-      meNick.textContent = data.nickname || "-";
+      const nick = normNick(data.nickname || "-");
+      meNick.textContent = nick;
       meXp.textContent = String(data.xp ?? 0);
       meLevel.textContent = String(data.level ?? calcLevelFromXp(data.xp ?? 0));
 
       myTickets = Number(data.lottoTickets || 0);
       syncTicketUI();
 
-      return { userRef, data };
+      return { userRef, data: { ...data, nickname: nick } };
     }
 
     async function loadRanking(){
@@ -367,7 +386,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${i++}</td>
-          <td>${(u.nickname || "-")}</td>
+          <td>${normNick(u.nickname || "-")}</td>
           <td class="right">${(u.level ?? 1)}</td>
           <td class="right">${(u.xp ?? 0)}</td>
         `;
@@ -395,6 +414,10 @@
           throw new Error("복권 티켓이 없습니다. (지급 후 이용 가능)");
         }
 
+        const nick = normNick(data.nickname || (user.email ? user.email.split("@")[0] : "사용자"));
+        const err = validateNickForDocId(nick);
+        if(err) throw new Error("닉네임 오류: " + err);
+
         const oldXp = Number(data.xp||0);
         const newXp = oldXp + earned;
         const newLevel = calcLevelFromXp(newXp);
@@ -403,12 +426,14 @@
           lottoTickets: tickets - 1,
           xp: newXp,
           level: newLevel,
+          // nickname도 혹시 모르니 정규화된 값으로 유지
+          nickname: nick,
           updatedAt: serverTimestamp()
         });
 
         tx.set(pubRef, {
           uid: user.uid,
-          nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
+          nickname: nick,
           xp: newXp,
           level: newLevel,
           updatedAt: serverTimestamp()
@@ -417,7 +442,7 @@
         const playRef = doc(collection(db, "lottoPlays"));
         tx.set(playRef, {
           uid: user.uid,
-          nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
+          nickname: nick,
           picked,
           drawn,
           matchCount: m,
@@ -439,7 +464,6 @@
       resultBox.style.display = "grid";
     }
 
-    // ✅ 1회 버튼
     async function playLottoOnce(user){
       clearErr();
 
@@ -455,7 +479,6 @@
       try{
         const r = await playOnce(user);
 
-        // 로컬 티켓/결과 반영
         myTickets = Math.max(0, (myTickets||0) - 1);
         syncTicketUI();
         renderResult(r.picked, r.drawn, r.m, r.earned);
@@ -470,7 +493,6 @@
       }
     }
 
-    // ✅ 자동 연속 버튼
     async function playLottoAuto(user){
       clearErr();
 
@@ -482,18 +504,16 @@
         throw new Error("복권 티켓이 없습니다. 룰렛에서 “복권” 항목 지급을 받아야 합니다.");
       }
 
-      const canRun = Math.min(want, myTickets); // 티켓 있는 만큼만
+      const canRun = Math.min(want, myTickets);
       setBusy(true);
 
       autoProgress.style.display = "block";
       autoProgress.textContent = `진행 중... 0 / ${canRun}`;
 
-      // 통계
       let done = 0;
       let totalEarned = 0;
       const dist = {0:0,1:0,2:0,3:0};
 
-      // 마지막 결과 표시용
       let last = null;
 
       try{
@@ -511,7 +531,6 @@
           autoProgress.textContent =
             `진행 중... ${done} / ${canRun} (총 경험치 +${totalEarned}, 남은 티켓 ${myTickets})`;
 
-          // 브라우저 멈춤 방지
           if(i % 25 === 24) await new Promise(r=>setTimeout(r, 0));
         }
 
