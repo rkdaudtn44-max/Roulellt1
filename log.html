@@ -4,27 +4,11 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>기록</title>
-
 <style>
-:root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;}
-body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
-.top{position:sticky;top:0;background:#f6f7fb;border-bottom:1px solid var(--line);padding:10px;display:flex;gap:8px;align-items:center;}
-.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
-.wrap{max-width:900px;margin:0 auto;padding:14px}
-.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
-.accHead{display:flex;justify-content:space-between;align-items:center;cursor:pointer}
-.badge{background:#eef2ff;border-radius:999px;padding:4px 10px;font-weight:900}
-.panel{display:none;margin-top:10px}
-.panel.on{display:block}
-.tabs{display:flex;gap:8px;margin-bottom:10px}
-.tab{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer}
-.tab.on{background:#111827;color:#fff}
-.rowsGrid{display:grid;grid-template-columns:1fr;gap:10px}
-@media(min-width:740px){.rowsGrid{grid-template-columns:1fr 1fr}}
-.itemCard{border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;justify-content:space-between;align-items:center}
-.itemRight{display:flex;gap:6px}
-.mini{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
-.muted{color:var(--muted);font-size:13px}
+body{margin:0;background:#f6f7fb;font-family:sans-serif}
+.top{padding:10px;background:#fff;border-bottom:1px solid #ddd;display:flex;gap:8px}
+.btn{padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff}
+.card{background:#fff;margin:12px;padding:12px;border-radius:12px}
 </style>
 </head>
 <body>
@@ -34,19 +18,18 @@ body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,
 <button class="btn" onclick="location.href='lotto.html'">🎟 복권</button>
 <div style="flex:1"></div>
 <div id="who"></div>
-<button class="btn" onclick="location.reload()">새로고침</button>
 </div>
 
-<div class="wrap">
-<div id="app">불러오는 중...</div>
-</div>
+<div id="app" class="card">로딩중...</div>
 
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
 <script>
-try {
+window.onerror=function(msg){
+document.body.innerHTML="<h2>JS 오류</h2><pre>"+msg+"</pre>";
+};
 
 const firebaseConfig={
 apiKey:"AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
@@ -54,151 +37,23 @@ authDomain:"roulette-b5455.firebaseapp.com",
 projectId:"roulette-b5455"
 };
 
-if (!firebase.apps.length) {
 firebase.initializeApp(firebaseConfig);
-}
-
 const auth=firebase.auth();
 const db=firebase.firestore();
-
-const ADMIN_EMAILS=["dori0223@gmail.com"];
 
 auth.onAuthStateChanged(async user=>{
 if(!user){location.href="index.html";return;}
 
 document.getElementById("who").textContent=user.email;
 
-let profileSnap=await db.collection("users").doc(user.uid).get();
-if(!profileSnap.exists){
+const snap=await db.collection("users").doc(user.uid).get();
+if(!snap.exists()){
 document.getElementById("app").innerHTML="프로필 없음";
 return;
 }
 
-const nickname=profileSnap.data()?.nickname || "";
-const isAdmin=ADMIN_EMAILS.includes(user.email);
-
-render(nickname,isAdmin);
-
+document.getElementById("app").innerHTML="기록 페이지 정상 작동 중 ✅";
 });
-
-async function render(myNick,isAdmin){
-
-const app=document.getElementById("app");
-app.innerHTML="";
-
-let nickList=[];
-
-if(isAdmin){
-try{
-const snap=await db.collection("counts").get();
-nickList=snap.docs.map(d=>d.id);
-}catch(e){
-app.innerHTML="카운트 읽기 실패";
-return;
-}
-}else{
-nickList=[myNick];
-}
-
-if(nickList.length===0){
-app.innerHTML="<div class='muted'>기록 없음</div>";
-return;
-}
-
-for(const nick of nickList){
-
-const card=document.createElement("div");
-card.className="card";
-
-const head=document.createElement("div");
-head.className="accHead";
-head.innerHTML=`<b>${nick}</b><span class="badge">0회</span>`;
-
-const panel=document.createElement("div");
-panel.className="panel";
-
-head.onclick=()=>panel.classList.toggle("on");
-
-card.appendChild(head);
-card.appendChild(panel);
-app.appendChild(card);
-
-let total=0;
-let byType={normal:[],noble:[],time:[]};
-
-try{
-const typesSnap=await db.collection("counts").doc(nick).collection("types").get();
-
-for(const t of typesSnap.docs){
-const itemsSnap=await db.collection("counts").doc(nick)
-.collection("types").doc(t.id)
-.collection("items").get();
-
-itemsSnap.forEach(it=>{
-const data=it.data()||{};
-const count=Number(data.count)||0;
-total+=count;
-if(byType[t.id]){
-byType[t.id].push({text:data.itemText||"",count:count});
-}
-});
-}
-}catch(e){
-console.log("읽기 오류",e);
-}
-
-head.querySelector(".badge").textContent=total+"회";
-
-const tabs=document.createElement("div");
-tabs.className="tabs";
-panel.appendChild(tabs);
-
-const grid=document.createElement("div");
-grid.className="rowsGrid";
-panel.appendChild(grid);
-
-function renderType(type){
-grid.innerHTML="";
-tabs.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
-const activeTab=tabs.querySelector(`[data-type='${type}']`);
-if(activeTab) activeTab.classList.add("on");
-
-const list=byType[type]||[];
-if(list.length===0){
-grid.innerHTML="<div class='muted'>항목 없음</div>";
-return;
-}
-
-list.forEach(item=>{
-const div=document.createElement("div");
-div.className="itemCard";
-div.innerHTML=`
-<div>${item.text}</div>
-<div class="itemRight">
-<span>${item.count}</span>
-</div>`;
-grid.appendChild(div);
-});
-}
-
-["normal","noble","time"].forEach(type=>{
-const btn=document.createElement("div");
-btn.className="tab";
-btn.dataset.type=type;
-btn.textContent=type==="normal"?"일반":type==="noble"?"귀족":"시간";
-btn.onclick=()=>renderType(type);
-tabs.appendChild(btn);
-});
-
-renderType("normal");
-
-}
-
-}
-
-} catch(e){
-document.body.innerHTML="<h2>치명적 오류</h2><pre>"+e+"</pre>";
-}
 </script>
 
 </body>
