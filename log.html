@@ -24,7 +24,7 @@ body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,
 .itemCard{border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;justify-content:space-between;align-items:center}
 .itemRight{display:flex;gap:6px}
 .mini{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
-.muted{color:#6b7280;font-size:13px}
+.muted{color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -46,6 +46,7 @@ body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
 <script>
+try {
 
 const firebaseConfig={
 apiKey:"AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
@@ -53,7 +54,10 @@ authDomain:"roulette-b5455.firebaseapp.com",
 projectId:"roulette-b5455"
 };
 
+if (!firebase.apps.length) {
 firebase.initializeApp(firebaseConfig);
+}
+
 const auth=firebase.auth();
 const db=firebase.firestore();
 
@@ -64,16 +68,17 @@ if(!user){location.href="index.html";return;}
 
 document.getElementById("who").textContent=user.email;
 
-const profileSnap=await db.collection("users").doc(user.uid).get();
+let profileSnap=await db.collection("users").doc(user.uid).get();
 if(!profileSnap.exists){
 document.getElementById("app").innerHTML="프로필 없음";
 return;
 }
 
-const nickname=profileSnap.data().nickname;
+const nickname=profileSnap.data()?.nickname || "";
 const isAdmin=ADMIN_EMAILS.includes(user.email);
 
 render(nickname,isAdmin);
+
 });
 
 async function render(myNick,isAdmin){
@@ -84,14 +89,19 @@ app.innerHTML="";
 let nickList=[];
 
 if(isAdmin){
+try{
 const snap=await db.collection("counts").get();
 nickList=snap.docs.map(d=>d.id);
+}catch(e){
+app.innerHTML="카운트 읽기 실패";
+return;
+}
 }else{
 nickList=[myNick];
 }
 
 if(nickList.length===0){
-app.innerHTML="기록 없음";
+app.innerHTML="<div class='muted'>기록 없음</div>";
 return;
 }
 
@@ -106,6 +116,7 @@ head.innerHTML=`<b>${nick}</b><span class="badge">0회</span>`;
 
 const panel=document.createElement("div");
 panel.className="panel";
+
 head.onclick=()=>panel.classList.toggle("on");
 
 card.appendChild(head);
@@ -113,33 +124,25 @@ card.appendChild(panel);
 app.appendChild(card);
 
 let total=0;
-let byType={};
+let byType={normal:[],noble:[],time:[]};
 
 try{
 const typesSnap=await db.collection("counts").doc(nick).collection("types").get();
 
 for(const t of typesSnap.docs){
-
-if(!byType[t.id]) byType[t.id]=[];
-
-const itemsSnap=await db.collection("counts")
-.doc(nick)
-.collection("types")
-.doc(t.id)
-.collection("items")
-.get();
+const itemsSnap=await db.collection("counts").doc(nick)
+.collection("types").doc(t.id)
+.collection("items").get();
 
 itemsSnap.forEach(it=>{
 const data=it.data()||{};
-const count=data.count||0;
+const count=Number(data.count)||0;
 total+=count;
-byType[t.id].push({
-text:data.itemText||it.id,
-count:count
-});
+if(byType[t.id]){
+byType[t.id].push({text:data.itemText||"",count:count});
+}
 });
 }
-
 }catch(e){
 console.log("읽기 오류",e);
 }
@@ -161,7 +164,6 @@ const activeTab=tabs.querySelector(`[data-type='${type}']`);
 if(activeTab) activeTab.classList.add("on");
 
 const list=byType[type]||[];
-
 if(list.length===0){
 grid.innerHTML="<div class='muted'>항목 없음</div>";
 return;
@@ -179,31 +181,24 @@ grid.appendChild(div);
 });
 }
 
-Object.keys(byType).forEach(type=>{
+["normal","noble","time"].forEach(type=>{
 const btn=document.createElement("div");
 btn.className="tab";
 btn.dataset.type=type;
-
-btn.textContent=
-type==="normal"?"일반":
-type==="noble"?"귀족":
-type==="time"?"시간":
-type;
-
+btn.textContent=type==="normal"?"일반":type==="noble"?"귀족":"시간";
 btn.onclick=()=>renderType(type);
 tabs.appendChild(btn);
 });
 
-if(Object.keys(byType).length>0){
-renderType(Object.keys(byType)[0]);
-}else{
-grid.innerHTML="<div class='muted'>기록 없음</div>";
-}
+renderType("normal");
 
 }
 
 }
 
+} catch(e){
+document.body.innerHTML="<h2>치명적 오류</h2><pre>"+e+"</pre>";
+}
 </script>
 
 </body>
