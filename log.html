@@ -13,7 +13,7 @@
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
     h2{margin:0 0 10px;font-size:20px}
     .muted{color:var(--muted);font-size:13px}
-    .danger{color:var(--danger);font-weight:900;font-size:13px}
+    .danger{color:var(--danger);font-weight:900;font-size:13px;white-space:pre-wrap}
 
     .accHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;cursor:pointer}
     .accHead b{font-size:16px}
@@ -105,6 +105,73 @@
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
   import { getFirestore, doc, getDoc, collection, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
+  const $ = (id)=>document.getElementById(id);
+
+  function showError(e){
+    const box = $("errBox");
+    box.style.display = "block";
+    const code = e?.code ? `(${e.code}) ` : "";
+    box.textContent = "오류: " + code + (e?.message || e);
+  }
+  function clearError(){
+    const box = $("errBox");
+    box.style.display = "none";
+    box.textContent = "";
+  }
+
+  // ✅ 어떤 에러든 화면에 강제로 띄우기(“불러오는 중” 무한 방지)
+  window.addEventListener("error", (ev) => {
+    try{
+      $("loadState").textContent = "불러오기 실패";
+      showError({ message: "스크립트 오류: " + (ev?.message || "알 수 없음") + (ev?.filename ? `\n${ev.filename}:${ev.lineno||0}` : "") });
+    }catch(_){}
+  });
+
+  window.addEventListener("unhandledrejection", (ev) => {
+    try{
+      $("loadState").textContent = "불러오기 실패";
+      const e = ev?.reason;
+      const code = e?.code ? `(${e.code}) ` : "";
+      showError({ message: "처리되지 않은 오류: " + code + (e?.message || String(e || "알 수 없음")) });
+    }catch(_){}
+  });
+
+  // ✅ 8초 넘게 멈추면 강제로 경고
+  setTimeout(()=>{
+    try{
+      const ls = $("loadState");
+      const box = $("errBox");
+      if(ls && ls.textContent.includes("불러오는 중") && box && box.style.display==="none"){
+        box.style.display = "block";
+        box.textContent =
+          "8초 이상 멈춤 감지됨.\n" +
+          "가능성: (1) Firestore 규칙 권한 문제 (2) 네트워크/캐시 (3) 스크립트 로드 실패\n" +
+          "※ 주소 뒤에 ?v=1 붙여서 캐시 무시도 해보세요.";
+      }
+    }catch(_){}
+  }, 8000);
+
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // ✅ 닉네임 정규화 통일
+  function normNick(v){
+    return String(v ?? "")
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  function validateNickForDocId(nick){
+    if(!nick) return "닉네임이 비어있어요.";
+    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
+    return "";
+  }
+
+  // ✅ roulette.html과 동일: 이메일 기준 admin
+  const ADMIN_EMAILS = ["dori0223@gmail.com"];
+
   const firebaseConfig = {
     apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
     authDomain: "roulette-b5455.firebaseapp.com",
@@ -119,41 +186,6 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  const $ = (id)=>document.getElementById(id);
-
-  // ✅ roulette.html과 동일하게 “이메일 기준 admin”
-  const ADMIN_EMAILS = ["dori0223@gmail.com"];
-
-  function escapeHtml(s){
-    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-
-  function showError(e){
-    const box = $("errBox");
-    box.style.display = "block";
-    const code = e?.code ? `(${e.code}) ` : "";
-    box.textContent = "오류: " + code + (e?.message || e);
-  }
-  function clearError(){
-    const box = $("errBox");
-    box.style.display = "none";
-    box.textContent = "";
-  }
-
-  // ✅ 닉네임 정규화 통일(가장 중요!)
-  function normNick(v){
-    return String(v ?? "")
-      .normalize("NFC")
-      .trim()
-      .replace(/\s+/g, " ");
-  }
-
-  function validateNickForDocId(nick){
-    if(!nick) return "닉네임이 비어있어요.";
-    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
-    return "";
-  }
-
   async function getProfile(uid){
     const snap = await getDoc(doc(db, "users", uid));
     return snap.exists() ? snap.data() : null;
@@ -161,6 +193,7 @@
 
   async function getNickList(isAdmin, myNick){
     if(isAdmin){
+      // ✅ 관리자면 counts 전체 조회
       const snap = await getDocs(collection(db, "counts"));
       return snap.docs.map(d=>d.id);
     }
@@ -246,9 +279,7 @@
       $("modeText").textContent =
         isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
 
-      // 프로필 닉도 정규화해서 이후 사용
       profile.nickname = myNick;
-
       render();
     }catch(e){
       $("loadState").textContent = "초기화 실패";
@@ -291,8 +322,6 @@
 
       for(const rawNick of nicks){
         const nick = normNick(rawNick);
-
-        // 관리자는 counts 문서id를 가져오니까, 여기서도 한번 검증
         const err = validateNickForDocId(nick);
         if(err) continue;
 
@@ -398,7 +427,6 @@
 
                 r.v = Number(r.v||0) + 1;
                 countEl.textContent = String(r.v);
-
                 if(r.v > 0) minusBtn.disabled = false;
 
                 tabCounts[type] = (tabCounts[type]||0) + 1;
@@ -488,7 +516,6 @@
         panel.appendChild(grid);
 
         renderTypeGrid(currentTab);
-
         accBox.appendChild(card);
       }
 
