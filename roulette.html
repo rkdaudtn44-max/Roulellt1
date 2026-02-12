@@ -44,7 +44,6 @@
     .hr{height:1px;background:var(--line);margin:12px 0}
     .ok{color:var(--good);font-weight:900;font-size:13px}
     .bad{color:var(--bad);font-weight:900;font-size:13px;white-space:pre-wrap}
-    .adminOnly{display:none}
   </style>
 </head>
 <body>
@@ -69,12 +68,13 @@
           <input class="nickInput" id="targetNick" placeholder="기록될 닉네임(관리자)" />
         </div>
       </div>
+
       <div class="spinHint" id="hintText">
         * 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.
       </div>
 
       <!-- ✅ 관리자 수동 지급 UI -->
-      <div class="adminOnly" id="grantBox">
+      <div id="grantBox" style="display:none">
         <div class="hr"></div>
         <div class="row" style="align-items:flex-start">
           <div>
@@ -151,7 +151,21 @@
     const b64 = btoa(unescape(encodeURIComponent(String(s))));
     return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
-  function normNick(v){ return String(v ?? "").trim(); }
+
+  // ✅ index.html과 동일 기준으로 통일 (중요!)
+  function normNick(v){
+    return String(v ?? "")
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  // ✅ 문서ID로 안전하지 않은 문자 방지
+  function validateNickForDocId(nick){
+    if(!nick) return "닉네임을 입력해줘.";
+    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
+    return "";
+  }
 
   function showGrantOk(msg){
     const ok = $("grantOk");
@@ -188,16 +202,22 @@
     return snap.exists() ? snap.data() : null;
   }
 
-  // ✅ nicknames/{닉} 존재 여부
-  async function nicknameExists(nick){
-    const snap = await getDoc(doc(db, "nicknames", normNick(nick)));
+  // ✅ nicknames/{닉} 존재 여부 (정규화 + 검증 포함)
+  async function nicknameExists(nickRaw){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+    const snap = await getDoc(doc(db, "nicknames", nick));
     return snap.exists();
   }
 
-  // ✅ nicknames/{닉} -> uid 가져오기
-  async function getUidByNickname(nick){
-    const key = normNick(nick);
-    const snap = await getDoc(doc(db, "nicknames", key));
+  // ✅ nicknames/{닉} -> uid 가져오기 (정규화 + 검증 포함)
+  async function getUidByNickname(nickRaw){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+
+    const snap = await getDoc(doc(db, "nicknames", nick));
     if(!snap.exists()) return null;
     const uid = snap.data()?.uid;
     return uid || null;
@@ -211,7 +231,7 @@
       const uid = d.data()?.uid;
       if(uid) uids.push(uid);
     });
-    return Array.from(new Set(uids)); // 중복 제거
+    return Array.from(new Set(uids));
   }
 
   // ✅ "복권"이 들어간 항목 텍스트에서 지급 장수 파싱
@@ -227,12 +247,10 @@
     return n;
   }
 
-  // ✅ "복권" 항목인지 여부(기록 제외용)
   function isLottoItem(itemText){
     return String(itemText || "").includes("복권");
   }
 
-  // ✅ uid 기준 티켓 지급(내부)
   async function grantLottoTicketsToUid(uid, ticketsToAdd){
     ticketsToAdd = Number(ticketsToAdd || 0);
     if(!Number.isFinite(ticketsToAdd) || ticketsToAdd <= 0) return;
@@ -253,10 +271,10 @@
     });
   }
 
-  // ✅ 닉네임 기준 티켓 지급(자동/수동 공용)
-  async function grantLottoTicketsToNickname(targetNick, ticketsToAdd){
-    const uid = await getUidByNickname(targetNick);
-    if(!uid) throw new Error(`닉네임 '${targetNick}'의 uid를 찾을 수 없습니다.`);
+  async function grantLottoTicketsToNickname(targetNickRaw, ticketsToAdd){
+    const uid = await getUidByNickname(targetNickRaw);
+    const targetNick = normNick(targetNickRaw);
+    if(!uid) throw new Error(`존재하지 않는 닉네임: ${targetNick}`);
     await grantLottoTicketsToUid(uid, ticketsToAdd);
   }
 
@@ -308,7 +326,6 @@
       { text: "복권 30개 지급", w: 1.7 },
       { text: "꽝", w: 12.1 }
     ]},
-
     noble: { label: "귀족", items: [
       { text: "24시간 닉변권", w: 5 },
       { text: "24시간 역닉변권", w: 5 },
@@ -330,7 +347,6 @@
       { text: "복권 1000장", w: 5 },
       { text: "도리 용돈", w: 5 }
     ]},
-
     time: { label: "시간", items: [
       { text: "방송 연장권 +1분", w: 41 },
       { text: "방송 연장권 +10분", w: 5 },
@@ -373,7 +389,6 @@
   }
   renderTypes(); renderItems();
 
-  /** 가중치 뽑기 */
   function pickWeighted(items){
     const cleaned = items
       .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
@@ -407,7 +422,11 @@
     const v = normNick(nickInput.value);
     const target = v.length ? v : normNick(profile.nickname);
 
-    if(!(await nicknameExists(target))){
+    const err = validateNickForDocId(target);
+    if(err) throw new Error(err);
+
+    const ok = await nicknameExists(target);
+    if(!ok){
       throw new Error(`존재하지 않는 닉네임: ${target}`);
     }
 
@@ -415,8 +434,11 @@
     return target;
   }
 
-  // ✅ counts 구조 저장
-  async function applyDelta(nick, type, itemText, delta){
+  async function applyDelta(nickRaw, type, itemText, delta){
+    const nick = normNick(nickRaw);
+    const err = validateNickForDocId(nick);
+    if(err) throw new Error(err);
+
     const itemId = encodeKey(itemText);
 
     const nickRef = doc(db, "counts", nick);
@@ -440,14 +462,13 @@
     });
   }
 
-  // ✅ 수동: 닉네임 지급 버튼
   $("grantToNickBtn").onclick = async ()=>{
     clearGrantMsg();
     try{
       if(!isAdmin) return;
 
       const amount = readGrantAmount();
-      const targetNick = await getTargetNick(); // 위쪽 닉네임 입력칸 기준
+      const targetNick = await getTargetNick();
 
       $("grantToNickBtn").disabled = true;
       $("grantAllBtn").disabled = true;
@@ -462,7 +483,6 @@
     }
   };
 
-  // ✅ 수동: 전체 지급 버튼
   $("grantAllBtn").onclick = async ()=>{
     clearGrantMsg();
     try{
@@ -477,7 +497,6 @@
       const uids = await getAllUidsFromNicknames();
       if(uids.length === 0) throw new Error("전체 지급 실패: nicknames 컬렉션에 유저가 없습니다.");
 
-      // 너무 빠른 연속 트랜잭션 방지: 배치처럼 조금씩 쉬어주기
       let done = 0;
       for(const uid of uids){
         await grantLottoTicketsToUid(uid, amount);
@@ -500,12 +519,14 @@
     profile = await getProfile(u.uid);
     if(!profile){ location.replace("index.html"); return; }
 
+    // ✅ 프로필 닉네임도 같은 규칙으로 정규화해서 표시/사용
+    profile.nickname = normNick(profile.nickname);
+
     const email = String(u.email || "").toLowerCase();
     isAdmin = ADMIN_EMAILS.includes(email);
 
     $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
 
-    // 관리자 UI on/off
     $("grantBox").style.display = isAdmin ? "block" : "none";
 
     if(!isAdmin){
@@ -536,8 +557,6 @@
       const pack = ROULETTES[currentType];
       const tally = new Map();
       let lastItem = "-";
-
-      // ✅ 복권 티켓 총 지급량 누적
       let totalTicketsToGrant = 0;
 
       for(let i=0;i<n;i++){
@@ -552,18 +571,15 @@
         if(i % 200 === 199) await new Promise(r=>setTimeout(r, 0));
       }
 
-      // ✅ counts 저장: "복권" 항목은 기록에 남기지 않음(자동지급 전용)
       for(const [itemText, cnt] of tally.entries()){
         if(isLottoItem(itemText)) continue;
         await applyDelta(targetNick, currentType, itemText, cnt);
       }
 
-      // ✅ 복권 티켓 지급 (한 번에 몰아서)
       if(totalTicketsToGrant > 0){
         await grantLottoTicketsToNickname(targetNick, totalTicketsToGrant);
       }
 
-      // 결과 표시
       const extra = totalTicketsToGrant > 0 ? ` · 자동복권 티켓 +${totalTicketsToGrant}` : "";
       $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 처리${extra})`;
       $("resultMeta").textContent =
