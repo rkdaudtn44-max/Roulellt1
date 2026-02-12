@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>관리자 전체 초기화</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--danger:#ef4444;--ok:#10b981;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .top{position:sticky;top:0;background:rgba(246,247,251,.9);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);z-index:10}
+    .topin{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:10px}
+    .brand{font-weight:900}
+    .wrap{max-width:980px;margin:16px auto;padding:0 16px 30px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+    .h{margin:0 0 8px;font-weight:900}
+    .muted{color:var(--muted);font-size:13px;line-height:1.5}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+    .btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+    input{border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:260px}
+    pre{background:#0b1020;color:#d7e3ff;border-radius:12px;padding:12px;overflow:auto;font-size:12px;min-height:140px}
+    .tag{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:12px;background:#fff}
+    .lock{opacity:.5;pointer-events:none;filter:grayscale(1)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+    .small{font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="topin">
+      <div class="brand">🛡️ 관리자 전체 초기화</div>
+      <div class="row">
+        <button class="btn" id="homeBtn">홈</button>
+        <button class="btn" id="logoutBtn">로그아웃</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <p class="h">주의</p>
+      <p class="muted">
+        아래 작업은 <b>되돌릴 수 없습니다.</b><br>
+        실행하려면 확인문구에 <b>"초기화"</b>를 입력한 뒤 진행하세요.<br>
+        (권한이 admin이 아니면 버튼이 잠기고, Firestore Rules에서도 차단됩니다.)
+      </p>
+
+      <div class="row" style="margin-top:10px">
+        <span class="tag">로그인: <b id="me">-</b></span>
+        <span class="tag">권한: <b id="role">-</b></span>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <input id="confirmWord" placeholder='여기에 "초기화" 입력' />
+        <button class="btn ok" id="checkBtn">권한/연결 확인</button>
+      </div>
+
+      <p class="muted small" style="margin-top:10px">
+        초기화 범위:
+        <b>logs, counts, lottoPlays, publicUsers</b> 전체 삭제 +
+        <b>users</b> 전체 유저의 <b>xp/level/lottoTickets</b>만 초기화 (role/nickname/email 유지)
+      </p>
+    </div>
+
+    <div class="grid">
+      <div class="card" id="panelDelete">
+        <p class="h">기록 전체 삭제</p>
+        <div class="row" style="margin-bottom:10px">
+          <button class="btn danger" id="resetRouletteBtn">룰렛 기록 전체 초기화 (logs + counts)</button>
+          <button class="btn danger" id="resetLottoBtn">복권 기록 전체 초기화 (lottoPlays)</button>
+          <button class="btn danger" id="resetPublicBtn">publicUsers 전체 초기화</button>
+        </div>
+        <p class="muted small">데이터가 많아도 배치로 나눠서 삭제합니다.</p>
+      </div>
+
+      <div class="card" id="panelUsers">
+        <p class="h">전체 유저 초기화</p>
+        <p class="muted small">
+          모든 users 문서의 <b>xp=0, level=1, lottoTickets=0</b>로 리셋합니다.<br>
+          <b>role/nickname/email/createdAt</b>은 유지합니다.
+        </p>
+        <div class="row" style="margin-top:10px">
+          <button class="btn danger" id="resetUsersBtn">전체 유저 xp/level/lottoTickets 초기화</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="h">진행 로그</p>
+      <pre id="out">대기중...</pre>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+    import {
+      getFirestore, doc, getDoc, collection, query, orderBy, limit, getDocs,
+      startAfter, writeBatch
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    // ✅ 네 Firebase 설정으로 교체
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const meEl = document.getElementById("me");
+    const roleEl = document.getElementById("role");
+    const confirmWord = document.getElementById("confirmWord");
+    const out = document.getElementById("out");
+
+    const panelDelete = document.getElementById("panelDelete");
+    const panelUsers = document.getElementById("panelUsers");
+
+    const log = (msg) => { out.textContent += "\\n" + msg; out.scrollTop = out.scrollHeight; };
+    const setOut = (msg) => { out.textContent = msg; };
+
+    let currentUser = null;
+    let currentIsAdmin = false;
+
+    function guardOrThrow(){
+      if(!currentUser) throw new Error("로그인 필요");
+      if(!currentIsAdmin) throw new Error("admin 권한이 아닙니다.");
+      if(confirmWord.value.trim() !== "초기화") throw new Error('확인 문구에 "초기화"를 입력하세요.');
+    }
+
+    async function checkAdmin(uid){
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+      return snap.exists() && snap.data()?.role === "admin";
+    }
+
+    function confirmDanger(){
+      // 2중 확인
+      const ok1 = confirm("정말 진행할까요? 되돌릴 수 없습니다.");
+      if(!ok1) return false;
+      const ok2 = confirm("마지막 확인: 정말로 실행합니다.");
+      return ok2;
+    }
+
+    // 컬렉션 전체 삭제 (배치 반복)
+    async function deleteCollection(collName, pageSize=450){
+      setOut(`[${collName}] 삭제 시작...`);
+      let last = null;
+      let total = 0;
+
+      while(true){
+        const qy = query(
+          collection(db, collName),
+          orderBy("__name__"),
+          limit(pageSize),
+          ...(last ? [startAfter(last)] : [])
+        );
+
+        const snap = await getDocs(qy);
+        if(snap.empty) break;
+
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+
+        total += snap.size;
+        last = snap.docs[snap.docs.length - 1];
+        log(`[${collName}] ${total}개 삭제 완료...`);
+      }
+
+      log(`[${collName}] 삭제 끝. 총 ${total}개`);
+    }
+
+    // users 전체 초기화 (role/nickname/email/createdAt 유지)
+    async function resetAllUsers(pageSize=450){
+      setOut(`[users] 전체 유저 초기화 시작... (xp/level/lottoTickets)`);
+      let last = null;
+      let total = 0;
+
+      while(true){
+        const qy = query(
+          collection(db, "users"),
+          orderBy("__name__"),
+          limit(pageSize),
+          ...(last ? [startAfter(last)] : [])
+        );
+
+        const snap = await getDocs(qy);
+        if(snap.empty) break;
+
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => {
+          batch.update(d.ref, {
+            xp: 0,
+            level: 1,
+            lottoTickets: 0,
+          });
+        });
+
+        await batch.commit();
+
+        total += snap.size;
+        last = snap.docs[snap.docs.length - 1];
+        log(`[users] ${total}명 초기화 완료...`);
+      }
+
+      log(`[users] 초기화 끝. 총 ${total}명`);
+    }
+
+    function lockPanels(lock){
+      [panelDelete, panelUsers].forEach(p => {
+        if(lock) p.classList.add("lock");
+        else p.classList.remove("lock");
+      });
+    }
+
+    // 버튼들
+    document.getElementById("homeBtn").onclick = () => location.href = "./index.html";
+    document.getElementById("logoutBtn").onclick = async () => {
+      await signOut(auth);
+      location.href = "./index.html";
+    };
+
+    document.getElementById("checkBtn").onclick = async () => {
+      if(!currentUser){
+        alert("로그인이 필요합니다.");
+        return;
+      }
+      currentIsAdmin = await checkAdmin(currentUser.uid);
+      roleEl.textContent = currentIsAdmin ? "admin" : "user";
+      lockPanels(!currentIsAdmin);
+      setOut(currentIsAdmin ? "✅ admin 확인 완료. 확인문구에 '초기화' 입력 후 실행하세요." : "❌ admin 권한이 아닙니다.");
+    };
+
+    document.getElementById("resetRouletteBtn").onclick = async () => {
+      try{
+        guardOrThrow();
+        if(!confirmDanger()) return;
+        await deleteCollection("logs");
+        await deleteCollection("counts");
+        alert("룰렛 기록(logs) + 카운트(counts) 초기화 완료");
+      }catch(e){
+        alert(e.message || String(e));
+      }
+    };
+
+    document.getElementById("resetLottoBtn").onclick = async () => {
+      try{
+        guardOrThrow();
+        if(!confirmDanger()) return;
+        await deleteCollection("lottoPlays");
+        alert("복권 기록(lottoPlays) 초기화 완료");
+      }catch(e){
+        alert(e.message || String(e));
+      }
+    };
+
+    document.getElementById("resetPublicBtn").onclick = async () => {
+      try{
+        guardOrThrow();
+        if(!confirmDanger()) return;
+        await deleteCollection("publicUsers");
+        alert("publicUsers 초기화 완료");
+      }catch(e){
+        alert(e.message || String(e));
+      }
+    };
+
+    document.getElementById("resetUsersBtn").onclick = async () => {
+      try{
+        guardOrThrow();
+        if(!confirmDanger()) return;
+        await resetAllUsers();
+        alert("전체 유저 초기화 완료 (xp/level/lottoTickets)");
+      }catch(e){
+        alert(e.message || String(e));
+      }
+    };
+
+    onAuthStateChanged(auth, async (user) => {
+      if(!user){
+        location.href = "./index.html";
+        return;
+      }
+      currentUser = user;
+      meEl.textContent = user.email || user.uid;
+
+      currentIsAdmin = await checkAdmin(user.uid);
+      roleEl.textContent = currentIsAdmin ? "admin" : "user";
+      lockPanels(!currentIsAdmin);
+
+      setOut(currentIsAdmin
+        ? "✅ admin으로 로그인됨. 확인문구에 '초기화' 입력 후 실행하세요."
+        : "❌ admin 권한이 아닙니다. 실행 불가"
+      );
+    });
+  </script>
+</body>
+</html>
