@@ -54,7 +54,16 @@
           <select id="d1"></select>
           <select id="d2"></select>
           <select id="d3"></select>
+
+          <!-- ✅ 티켓 표시 -->
+          <span class="pill">티켓 <b id="ticketCount">0</b></span>
+
           <button class="btn pri" id="playBtn">돌리기</button>
+        </div>
+
+        <!-- ✅ 티켓 없을 때 안내 -->
+        <div class="muted" id="ticketHint" style="display:none;margin-top:6px;">
+          티켓이 없습니다. 룰렛에서 “복권” 항목을 받아야 사용 가능합니다.
         </div>
 
         <div class="resultBox" id="resultBox" style="display:none">
@@ -111,7 +120,6 @@
       query, orderBy, limit, getDocs, collection
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ✅ index.html / roulette.html / log.html 과 반드시 동일해야 함
     const firebaseConfig = {
       apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
@@ -138,11 +146,24 @@
       errBox.textContent = "";
     };
 
-    // ----- 레벨 계산: 1레벨=100, 렙업마다 +100 (누적 요구치: 100 + 200 + 300 + ...)
+    // ✅ 티켓 UI
+    const ticketCountEl = $("ticketCount");
+    const ticketHint = $("ticketHint");
+    let myTickets = 0;
+
+    function syncTicketUI(){
+      ticketCountEl.textContent = String(myTickets || 0);
+      if((myTickets||0) <= 0){
+        $("playBtn").disabled = true;
+        ticketHint.style.display = "block";
+      }else{
+        ticketHint.style.display = "none";
+      }
+    }
+
+    // ----- 레벨 계산
     function calcLevelFromXp(xp){
       xp = Math.max(0, Number(xp||0));
-      // sum_{k=1..L} 100k = 50*L*(L+1)
-      // L = floor((sqrt(1 + 0.08*xp) - 1)/2)
       const L = Math.floor((Math.sqrt(1 + 0.08 * xp) - 1) / 2);
       return Math.max(1, L);
     }
@@ -197,7 +218,6 @@
       return [0,0,0].map(()=>Math.floor(Math.random()*10));
     }
 
-    // “개수 일치”를 중복 포함으로 계산 (순서 상관없이 0~3개)
     function countMatches(picked, drawn){
       const cntP = Array(10).fill(0);
       const cntD = Array(10).fill(0);
@@ -205,7 +225,7 @@
       drawn.forEach(n=>cntD[n]++);
       let m = 0;
       for(let i=0;i<=9;i++) m += Math.min(cntP[i], cntD[i]);
-      return m; // 0~3
+      return m;
     }
 
     function xpByMatch(m){
@@ -217,7 +237,7 @@
 
     function safeStr(v){ return String(v ?? "").trim(); }
 
-    // ✅ users + publicUsers 둘 다 준비 (기존 users 틀 유지 + 랭킹용 공개 컬렉션 추가)
+    // ✅ users + publicUsers 준비 (+ lottoTickets 기본값 보장)
     async function ensureUserDoc(user){
       const userRef = doc(db, "users", user.uid);
       const pubRef  = doc(db, "publicUsers", user.uid);
@@ -235,11 +255,11 @@
           role: "user",
           xp: 0,
           level: 1,
+          lottoTickets: 0,              // ✅ 추가
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         }, { merge: true });
 
-        // ✅ 랭킹 공개용 (email 없이)
         await setDoc(pubRef, {
           uid: user.uid,
           nickname: nickGuess,
@@ -251,18 +271,18 @@
         return { userRef, pubRef };
       }
 
-      // 이미 존재하면 xp/level 없으면만 채움
       const data = snap.data() || {};
       const patch = {};
+
       if(data.xp === undefined) patch.xp = 0;
       if(data.level === undefined) patch.level = calcLevelFromXp(data.xp ?? 0);
+      if(data.lottoTickets === undefined) patch.lottoTickets = 0; // ✅ 추가
 
       if(Object.keys(patch).length){
         patch.updatedAt = serverTimestamp();
         await setDoc(userRef, patch, { merge: true });
       }
 
-      // ✅ publicUsers도 동기화(닉네임/레벨/경험치)
       const nick = data.nickname || (user.email ? user.email.split("@")[0] : "사용자");
       const xp = Number((data.xp ?? patch.xp) ?? 0);
       const level = Number((data.level ?? patch.level) ?? calcLevelFromXp(xp));
@@ -287,10 +307,13 @@
       meXp.textContent = String(data.xp ?? 0);
       meLevel.textContent = String(data.level ?? calcLevelFromXp(data.xp ?? 0));
 
+      // ✅ 티켓 반영
+      myTickets = Number(data.lottoTickets || 0);
+      syncTicketUI();
+
       return { userRef, data };
     }
 
-    // ✅ TOP5는 users가 아니라 publicUsers에서 조회 (Rules 안깨고 보안 유지)
     async function loadRanking(){
       rankBody.innerHTML = "";
       const q = query(
@@ -316,6 +339,13 @@
 
     async function playLotto(user){
       clearErr();
+
+      // ✅ UI 단계에서 1차 차단
+      if((myTickets||0) <= 0){
+        syncTicketUI();
+        throw new Error("복권 티켓이 없습니다. 룰렛에서 “복권” 항목 지급을 받아야 합니다.");
+      }
+
       playBtn.disabled = true;
 
       try{
@@ -336,19 +366,28 @@
         const userRef = doc(db, "users", user.uid);
         const pubRef  = doc(db, "publicUsers", user.uid);
 
+        // ✅ DB에서 2차 차단 + 티켓 1장 차감 (치트 방지)
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(userRef);
           if(!snap.exists()) throw new Error("users 문서가 없습니다. (가입/로그인부터 다시 확인)");
           const data = snap.data() || {};
 
+          const tickets = Number(data.lottoTickets || 0);
+          if(tickets <= 0){
+            throw new Error("복권 티켓이 없습니다. (지급 후 이용 가능)");
+          }
+
           const oldXp = Number(data.xp||0);
           const newXp = oldXp + earned;
           const newLevel = calcLevelFromXp(newXp);
 
-          // ✅ 본인 users 업데이트
-          tx.update(userRef, { xp: newXp, level: newLevel, updatedAt: serverTimestamp() });
+          tx.update(userRef, {
+            lottoTickets: tickets - 1, // ✅ 티켓 소모
+            xp: newXp,
+            level: newLevel,
+            updatedAt: serverTimestamp()
+          });
 
-          // ✅ 랭킹 공개용도 동기화 (email 없음)
           tx.set(pubRef, {
             uid: user.uid,
             nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
@@ -357,7 +396,6 @@
             updatedAt: serverTimestamp()
           }, { merge: true });
 
-          // ✅ 플레이 로그 저장 (Rules에 lottoPlays 추가 필요)
           const playRef = doc(collection(db, "lottoPlays"));
           tx.set(playRef, {
             uid: user.uid,
@@ -375,7 +413,11 @@
       }catch(e){
         showErr(e);
       }finally{
-        playBtn.disabled = false;
+        // ✅ 티켓이 0이 되었을 수 있으니 다시 UI 동기화
+        syncTicketUI();
+        if((myTickets||0) > 0){
+          playBtn.disabled = false;
+        }
       }
     }
 
@@ -389,6 +431,8 @@
       try{
         await loadMe(user);
         await loadRanking();
+
+        // ✅ 티켓 0이면 눌러도 못 돌게 (handler는 유지)
         playBtn.onclick = () => playLotto(user);
       }catch(e){
         showErr(e);
