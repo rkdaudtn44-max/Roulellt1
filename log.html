@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>기록</title>
   <style>
-    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;}
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;--pri:#5b7cff;}
     body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
     .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
     .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
@@ -29,6 +29,7 @@
     .mini:disabled{opacity:.4;cursor:not-allowed}
     .small{font-size:12px;color:var(--muted)}
 
+    /* ✅ 2열 종대(기존 유지) */
     .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
     @media (min-width: 740px){
       .rowsGrid{grid-template-columns:1fr 1fr;}
@@ -44,9 +45,40 @@
       justify-content:space-between;
     }
     .itemLeft b{display:block;font-size:14px}
-    .itemLeft .small{margin-top:4px}
     .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
     .itemRight{display:flex;gap:8px}
+
+    /* ✅ 타입 탭 */
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+    .tab{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:999px;
+      padding:8px 12px;
+      font-weight:900;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+    .tab.on{
+      background:#111827;
+      border-color:#111827;
+      color:#fff;
+    }
+    .tab .tcount{
+      border:1px solid rgba(255,255,255,.25);
+      background:rgba(255,255,255,.12);
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:900;
+    }
+    .tab:not(.on) .tcount{
+      border-color:var(--line);
+      background:#f3f4f6;
+      color:#111827;
+    }
   </style>
 </head>
 <body>
@@ -124,24 +156,30 @@
     return [myNick];
   }
 
-  async function getRowsForNick(nick){
-    const rows = [];
+  // ✅ 타입별로 나눠서 가져오기
+  async function getRowsForNickByType(nick){
+    const byType = { normal: [], noble: [], time: [] };
+
     const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
     for(const tDoc of typesSnap.docs){
       const type = tDoc.id;
       const itemsSnap = await getDocs(collection(db, "counts", nick, "types", type, "items"));
       for(const it of itemsSnap.docs){
         const d = it.data();
-        rows.push({
+        const row = {
           type,
           item: d.itemText || "-",
           v: Number(d.count || 0),
           itemId: it.id
-        });
+        };
+        if(!byType[type]) byType[type] = [];
+        byType[type].push(row);
       }
     }
-    rows.sort((a,b)=>b.v-a.v);
-    return rows;
+
+    // 내림차순 정렬
+    Object.keys(byType).forEach(t => byType[t].sort((a,b)=>b.v-a.v));
+    return byType;
   }
 
   async function applyDelta(nick, type, itemId, itemText, delta){
@@ -162,6 +200,13 @@
 
   let profile = null;
   let isAdmin = false;
+
+  // ✅ UI 상태 유지: 열려있는 닉네임/선택 탭
+  const openSet = new Set();          // 열려있는 닉네임
+  const tabByNick = new Map();        // nick -> "normal"|"noble"|"time"
+
+  // ✅ 합산 총합 (화면 상단 표시용)
+  let grandTotal = 0;
 
   $("refreshBtn").onclick = ()=>render();
 
@@ -191,6 +236,21 @@
     }
   });
 
+  function sumRows(list){
+    return (list||[]).reduce((a,b)=>a + (Number(b.v)||0), 0);
+  }
+
+  function safeTypeLabel(type){
+    if(type==="normal") return "일반";
+    if(type==="noble") return "귀족";
+    if(type==="time") return "시간";
+    return type;
+  }
+
+  function typeOrder(){
+    return ["normal","noble","time"];
+  }
+
   async function render(){
     clearError();
     $("loadState").textContent = "불러오는 중…";
@@ -207,26 +267,50 @@
         return;
       }
 
-      let total = 0;
+      grandTotal = 0;
 
       for(const nick of nicks){
-        const rows = await getRowsForNick(nick);
-        const nickSum = rows.reduce((a,b)=>a + (b.v||0), 0);
-        total += nickSum;
+        const byType = await getRowsForNickByType(nick);
+
+        const sumNormal = sumRows(byType.normal);
+        const sumNoble  = sumRows(byType.noble);
+        const sumTime   = sumRows(byType.time);
+        const nickSum = sumNormal + sumNoble + sumTime;
+        grandTotal += nickSum;
+
+        const currentTab = tabByNick.get(nick) || "normal";
 
         const card = document.createElement("div");
         card.className = "card";
         card.innerHTML = `
           <div class="accHead">
             <b>${escapeHtml(nick)}</b>
-            <span class="badge">${nickSum}회</span>
+            <span class="badge" data-badge>${nickSum}회</span>
           </div>
-          <div class="panel"></div>
+          <div class="panel ${openSet.has(nick) ? "on" : ""}"></div>
         `;
 
         const panel = card.querySelector(".panel");
-        card.querySelector(".accHead").onclick = ()=> panel.classList.toggle("on");
+        const head = card.querySelector(".accHead");
 
+        head.onclick = ()=>{
+          const willOpen = !panel.classList.contains("on");
+          panel.classList.toggle("on");
+          if(willOpen) openSet.add(nick);
+          else openSet.delete(nick);
+        };
+
+        // ✅ 탭 UI
+        const tabs = document.createElement("div");
+        tabs.className = "tabs";
+
+        const tabCounts = {
+          normal: sumNormal,
+          noble: sumNoble,
+          time: sumTime
+        };
+
+        // ✅ 표 헤더
         const headTable = document.createElement("div");
         headTable.className = "table";
         headTable.innerHTML = `
@@ -237,52 +321,172 @@
           </div>
         `;
 
+        // ✅ 아이템 그리드(2열)
         const grid = document.createElement("div");
         grid.className = "rowsGrid";
 
-        if(rows.length === 0){
-          grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
-        }else{
+        // ✅ 그리드를 특정 타입으로 렌더링
+        const renderTypeGrid = (type)=>{
+          tabByNick.set(nick, type);
+
+          // 탭 스타일
+          tabs.querySelectorAll(".tab").forEach(b=>{
+            b.classList.toggle("on", b.dataset.type === type);
+          });
+
+          grid.innerHTML = "";
+
+          const rows = (byType[type] || []).slice().sort((a,b)=>b.v-a.v);
+
+          if(rows.length === 0){
+            grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+            return;
+          }
+
           for(const r of rows){
             const item = document.createElement("div");
             item.className = "itemCard";
+            item.dataset.type = type;
+            item.dataset.itemId = r.itemId;
+
             item.innerHTML = `
               <div class="itemLeft">
                 <b>${escapeHtml(r.item)}</b>
-                <div class="small">${escapeHtml(r.type)}</div>
+                <div class="small">${escapeHtml(safeTypeLabel(type))}</div>
               </div>
-              <div class="itemMid">${r.v}</div>
+              <div class="itemMid" data-count>${r.v}</div>
               <div class="itemRight">
                 <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
                 <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
               </div>
             `;
 
-            item.querySelector('[data-act="plus"]').onclick = async (ev)=>{
+            const countEl = item.querySelector('[data-count]');
+            const minusBtn = item.querySelector('[data-act="minus"]');
+            const plusBtn  = item.querySelector('[data-act="plus"]');
+            const badgeEl = card.querySelector("[data-badge]");
+
+            // ✅ 핵심: +/- 누를 때 밖으로 튕김 방지 + 전체 render() 재호출 금지
+            plusBtn.onclick = async (ev)=>{
+              ev.preventDefault();
               ev.stopPropagation();
               if(!isAdmin) return;
-              await applyDelta(nick, r.type, r.itemId, r.item, +1);
-              render();
+
+              plusBtn.disabled = true;
+              minusBtn.disabled = true;
+
+              try{
+                await applyDelta(nick, type, r.itemId, r.item, +1);
+
+                // 로컬 값 갱신
+                r.v = Number(r.v||0) + 1;
+                countEl.textContent = String(r.v);
+
+                // minus 활성
+                if(r.v > 0) minusBtn.disabled = false;
+
+                // 탭/뱃지 합계 갱신
+                tabCounts[type] = (tabCounts[type]||0) + 1;
+                const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
+                badgeEl.textContent = `${newNickSum}회`;
+
+                // grandTotal도 화면 표시 갱신(대략치)
+                grandTotal += 1;
+                $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+
+                // 탭 숫자 표시 갱신
+                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
+                if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
+
+              }catch(e){
+                showError(e);
+              }finally{
+                plusBtn.disabled = !isAdmin ? true : false;
+                minusBtn.disabled = !(isAdmin && r.v>0);
+              }
             };
-            item.querySelector('[data-act="minus"]').onclick = async (ev)=>{
+
+            minusBtn.onclick = async (ev)=>{
+              ev.preventDefault();
               ev.stopPropagation();
               if(!isAdmin) return;
-              await applyDelta(nick, r.type, r.itemId, r.item, -1);
-              render();
+              if(r.v <= 0) return;
+
+              plusBtn.disabled = true;
+              minusBtn.disabled = true;
+
+              try{
+                await applyDelta(nick, type, r.itemId, r.item, -1);
+
+                r.v = Math.max(0, Number(r.v||0) - 1);
+
+                // 0 되면 카드 제거
+                if(r.v === 0){
+                  item.remove();
+                }else{
+                  countEl.textContent = String(r.v);
+                }
+
+                // 탭/뱃지 합계 갱신
+                tabCounts[type] = Math.max(0, (tabCounts[type]||0) - 1);
+                const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
+                badgeEl.textContent = `${newNickSum}회`;
+
+                grandTotal = Math.max(0, grandTotal - 1);
+                $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+
+                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
+                if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
+
+                // 탭이 비어버리면 “항목이 없어요” 표시
+                if(grid.children.length === 0){
+                  grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+                }
+
+              }catch(e){
+                showError(e);
+              }finally{
+                plusBtn.disabled = !isAdmin ? true : false;
+                // r.v가 0이면 item 자체가 사라질 수도 있음
+                if(item.isConnected){
+                  minusBtn.disabled = !(isAdmin && r.v>0);
+                }
+              }
             };
 
             grid.appendChild(item);
           }
+        };
+
+        // 탭 버튼 만들기
+        for(const t of typeOrder()){
+          const b = document.createElement("button");
+          b.className = "tab" + (t===currentTab ? " on" : "");
+          b.dataset.type = t;
+          b.type = "button";
+          b.innerHTML = `${safeTypeLabel(t)} <span class="tcount">${tabCounts[t]||0}</span>`;
+
+          b.onclick = (ev)=>{
+            ev.preventDefault();
+            ev.stopPropagation();
+            renderTypeGrid(t);
+          };
+
+          tabs.appendChild(b);
         }
 
+        panel.appendChild(tabs);
         panel.appendChild(headTable);
         panel.appendChild(grid);
+
+        // 최초 렌더 타입
+        renderTypeGrid(currentTab);
+
         accBox.appendChild(card);
       }
 
-      $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${total}회)`;
+      $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
     }catch(e){
-      // ✅ 여기서 멈추던 문제를 "에러 표시"로 바꿈
       $("loadState").textContent = "불러오기 실패";
       showError(e);
     }
