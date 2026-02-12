@@ -1,18 +1,23 @@
+<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
 <script>
+try {
+
 const firebaseConfig = {
   apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
   authDomain: "roulette-b5455.firebaseapp.com",
   projectId: "roulette-b5455",
-  storageBucket: "roulette-b5455.firebasestorage.app",
+  storageBucket: "roulette-b5455.appspot.com",
   messagingSenderId: "728191308035",
   appId: "1:728191308035:web:b14b46c38bbe0261969936"
 };
 
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -22,9 +27,11 @@ const pwEl = document.getElementById("pw");
 const nickEl = document.getElementById("nick");
 const msgEl = document.getElementById("msg");
 
-function msg(t){ msgEl.textContent = t; }
+function msg(t){
+  if(msgEl) msgEl.textContent = t;
+}
 
-document.getElementById("loginBtn").onclick = async ()=>{
+document.getElementById("loginBtn")?.addEventListener("click", async ()=>{
   try{
     await auth.signInWithEmailAndPassword(
       emailEl.value.trim(),
@@ -34,18 +41,25 @@ document.getElementById("loginBtn").onclick = async ()=>{
   }catch(e){
     msg("로그인 실패: " + e.message);
   }
-};
+});
 
-document.getElementById("signupBtn").onclick = async ()=>{
+document.getElementById("signupBtn")?.addEventListener("click", async ()=>{
   try{
-    const cred = await auth.createUserWithEmailAndPassword(
-      emailEl.value.trim(),
-      pwEl.value
-    );
+
+    const email = emailEl.value.trim();
+    const password = pwEl.value;
+    const nickname = nickEl.value.trim();
+
+    if(!email || !password || !nickname){
+      msg("모든 값을 입력해줘.");
+      return;
+    }
+
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
 
     await db.collection("users").doc(cred.user.uid).set({
-      email: emailEl.value.trim(),
-      nickname: nickEl.value.trim(),
+      email: email,
+      nickname: nickname,
       role: "user",
       xp: 0,
       level: 1,
@@ -54,23 +68,32 @@ document.getElementById("signupBtn").onclick = async ()=>{
     });
 
     location.href = "roulette.html";
+
   }catch(e){
     msg("회원가입 실패: " + e.message);
   }
-};
+});
 
 auth.onAuthStateChanged(user=>{
+  const signedOut = document.getElementById("signedOut");
+  const signedIn = document.getElementById("signedIn");
+  const who = document.getElementById("who");
+
   if(user){
-    document.getElementById("signedOut").style.display="none";
-    document.getElementById("signedIn").style.display="block";
-    document.getElementById("who").textContent = "로그인됨: " + user.email;
+    if(signedOut) signedOut.style.display="none";
+    if(signedIn) signedIn.style.display="block";
+    if(who) who.textContent = "로그인됨: " + user.email;
   }else{
-    document.getElementById("signedOut").style.display="block";
-    document.getElementById("signedIn").style.display="none";
+    if(signedOut) signedOut.style.display="block";
+    if(signedIn) signedIn.style.display="none";
   }
 });
 
-document.getElementById("logoutBtn").onclick = async ()=>{
+document.getElementById("logoutBtn")?.addEventListener("click", async ()=>{
   await auth.signOut();
-};
+});
+
+} catch(e){
+  document.body.innerHTML = "<h2>스크립트 오류</h2><pre>"+e+"</pre>";
+}
 </script>
