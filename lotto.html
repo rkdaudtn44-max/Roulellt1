@@ -10,7 +10,7 @@
     .top{position:sticky;top:0;background:rgba(246,247,251,.9);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);z-index:10}
     .topin{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:10px}
     .brand{font-weight:800}
-    .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer;font-weight:900}
     .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
     .wrap{max-width:980px;margin:16px auto;padding:0 16px 30px}
     .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:12px}
@@ -18,6 +18,7 @@
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
     .h{font-size:16px;font-weight:800;margin:0 0 10px}
     .muted{color:var(--muted);font-size:13px}
+    .danger{color:var(--bad);font-weight:900;font-size:13px;white-space:pre-wrap}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     select{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}
     .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:8px 10px;background:#fff;font-size:13px}
@@ -25,8 +26,6 @@
     .resultBox{display:grid;gap:10px}
     .nums{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .ball{width:42px;height:42px;border-radius:999px;border:1px solid var(--line);display:grid;place-items:center;background:#fff;font-weight:900;font-size:18px}
-    .ok{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.08)}
-    .bad{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08)}
     table{width:100%;border-collapse:separate;border-spacing:0}
     th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;font-size:13px}
     th{color:var(--muted);font-weight:700}
@@ -39,6 +38,7 @@
       <div class="brand">🎟️ 복권 (3자리)</div>
       <div class="row">
         <button class="btn" id="goHomeBtn">홈</button>
+        <button class="btn" id="goRouletteBtn">룰렛</button>
         <button class="btn" id="logoutBtn">로그아웃</button>
       </div>
     </div>
@@ -71,6 +71,8 @@
             <span class="pill">획득 경험치 <b id="xpEarned">0</b></span>
           </div>
         </div>
+
+        <div id="errBox" class="danger" style="display:none;margin-top:12px;"></div>
       </div>
 
       <div class="card">
@@ -105,23 +107,36 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection,
-      serverTimestamp, runTransaction, query, orderBy, limit, getDocs
+      getFirestore, doc, getDoc, setDoc, serverTimestamp, runTransaction,
+      query, orderBy, limit, getDocs, collection
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ✅ 네 Firebase 설정 그대로 유지해서 붙여넣기
+    // ✅ index.html / roulette.html / log.html 과 반드시 동일해야 함
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_AUTH_DOMAIN",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_STORAGE",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+      authDomain: "roulette-b5455.firebaseapp.com",
+      projectId: "roulette-b5455",
+      storageBucket: "roulette-b5455.firebasestorage.app",
+      messagingSenderId: "728191308035",
+      appId: "1:728191308035:web:b14b46c38bbe0261969936",
+      measurementId: "G-SPY41ZKXYQ"
     };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+
+    const $ = (id)=>document.getElementById(id);
+    const errBox = $("errBox");
+    const showErr = (e)=>{
+      errBox.style.display = "block";
+      const code = e?.code ? `(${e.code}) ` : "";
+      errBox.textContent = "오류: " + code + (e?.message || e);
+    };
+    const clearErr = ()=>{
+      errBox.style.display = "none";
+      errBox.textContent = "";
+    };
 
     // ----- 레벨 계산: 1레벨=100, 렙업마다 +100 (누적 요구치: 100 + 200 + 300 + ...)
     function calcLevelFromXp(xp){
@@ -129,7 +144,7 @@
       // sum_{k=1..L} 100k = 50*L*(L+1)
       // L = floor((sqrt(1 + 0.08*xp) - 1)/2)
       const L = Math.floor((Math.sqrt(1 + 0.08 * xp) - 1) / 2);
-      return Math.max(1, L); // 최소 1레벨로 표시
+      return Math.max(1, L);
     }
 
     function fillSelect(sel){
@@ -141,36 +156,39 @@
       }
     }
 
-    const d1 = document.getElementById("d1");
-    const d2 = document.getElementById("d2");
-    const d3 = document.getElementById("d3");
+    const d1 = $("d1");
+    const d2 = $("d2");
+    const d3 = $("d3");
     [d1,d2,d3].forEach(fillSelect);
 
-    const playBtn = document.getElementById("playBtn");
-    const resultBox = document.getElementById("resultBox");
-    const pickedView = document.getElementById("pickedView");
-    const drawnView = document.getElementById("drawnView");
-    const matchCountEl = document.getElementById("matchCount");
-    const xpEarnedEl = document.getElementById("xpEarned");
+    const playBtn = $("playBtn");
+    const resultBox = $("resultBox");
+    const pickedView = $("pickedView");
+    const drawnView = $("drawnView");
+    const matchCountEl = $("matchCount");
+    const xpEarnedEl = $("xpEarned");
 
-    const meNick = document.getElementById("meNick");
-    const meLevel = document.getElementById("meLevel");
-    const meXp = document.getElementById("meXp");
-    const rankBody = document.getElementById("rankBody");
+    const meNick = $("meNick");
+    const meLevel = $("meLevel");
+    const meXp = $("meXp");
+    const rankBody = $("rankBody");
 
-    document.getElementById("logoutBtn").onclick = async () => {
+    $("logoutBtn").onclick = async () => {
       await signOut(auth);
+      location.replace("./index.html");
+    };
+
+    $("goHomeBtn").onclick = () => {
       location.href = "./index.html";
     };
 
-    document.getElementById("goHomeBtn").onclick = () => {
-      // 네 홈이 index.html이면 유지 / 아니라면 파일명 바꿔줘
-      location.href = "./index.html";
+    $("goRouletteBtn").onclick = () => {
+      location.href = "./roulette.html";
     };
 
-    function makeBall(n, cls=""){
+    function makeBall(n){
       const div = document.createElement("div");
-      div.className = "ball " + cls;
+      div.className = "ball";
       div.textContent = String(n);
       return div;
     }
@@ -197,14 +215,20 @@
       return 1000;
     }
 
+    function safeStr(v){ return String(v ?? "").trim(); }
+
     async function ensureUserDoc(user){
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
+
       if(!snap.exists()){
-        // nickname은 네 기존 구조에서 따로 저장한다면 여기 부분만 맞춰줘
-        const nickGuess = user.displayName || "사용자";
+        // 신규 유저 문서 생성 (닉네임은 이메일 앞부분으로 임시)
+        const email = safeStr(user.email);
+        const nickGuess = email ? email.split("@")[0] : (user.displayName || "사용자");
+
         await setDoc(ref, {
           uid: user.uid,
+          email: user.email || null,
           nickname: nickGuess,
           role: "user",
           xp: 0,
@@ -212,6 +236,18 @@
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         }, { merge: true });
+
+        return ref;
+      }
+
+      // 이미 존재하면: nickname/role 등 기존값 유지, xp/level 없으면만 채움
+      const data = snap.data() || {};
+      const patch = {};
+      if(data.xp === undefined) patch.xp = 0;
+      if(data.level === undefined) patch.level = calcLevelFromXp(data.xp ?? 0);
+      if(Object.keys(patch).length){
+        patch.updatedAt = serverTimestamp();
+        await setDoc(ref, patch, { merge: true });
       }
       return ref;
     }
@@ -220,9 +256,11 @@
       const ref = await ensureUserDoc(user);
       const snap = await getDoc(ref);
       const data = snap.data() || {};
+
       meNick.textContent = data.nickname || "-";
       meXp.textContent = String(data.xp ?? 0);
       meLevel.textContent = String(data.level ?? calcLevelFromXp(data.xp ?? 0));
+
       return { ref, data };
     }
 
@@ -245,62 +283,73 @@
     }
 
     async function playLotto(user){
+      clearErr();
       playBtn.disabled = true;
 
-      const picked = [Number(d1.value), Number(d2.value), Number(d3.value)];
-      const drawn = randomDigits3();
-      const m = countMatches(picked, drawn);
-      const earned = xpByMatch(m);
+      try{
+        const picked = [Number(d1.value), Number(d2.value), Number(d3.value)];
+        const drawn = randomDigits3();
+        const m = countMatches(picked, drawn);
+        const earned = xpByMatch(m);
 
-      // UI 표시
-      pickedView.innerHTML = "";
-      drawnView.innerHTML = "";
-      picked.forEach(n=>pickedView.appendChild(makeBall(n)));
-      drawn.forEach(n=>drawnView.appendChild(makeBall(n)));
-      matchCountEl.textContent = String(m);
-      xpEarnedEl.textContent = String(earned);
-      resultBox.style.display = "grid";
+        // UI 표시
+        pickedView.innerHTML = "";
+        drawnView.innerHTML = "";
+        picked.forEach(n=>pickedView.appendChild(makeBall(n)));
+        drawn.forEach(n=>drawnView.appendChild(makeBall(n)));
+        matchCountEl.textContent = String(m);
+        xpEarnedEl.textContent = String(earned);
+        resultBox.style.display = "grid";
 
-      // DB 저장 + 유저 경험치 트랜잭션 업데이트
-      const userRef = doc(db, "users", user.uid);
+        const userRef = doc(db, "users", user.uid);
 
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(userRef);
-        if(!snap.exists()) throw new Error("users 문서가 없습니다.");
-        const data = snap.data() || {};
-        const newXp = (Number(data.xp||0) + earned);
-        const newLevel = calcLevelFromXp(newXp);
+        // DB 저장 + 경험치 업데이트 (트랜잭션)
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(userRef);
+          if(!snap.exists()) throw new Error("users 문서가 없습니다. (가입/로그인부터 다시 확인)");
+          const data = snap.data() || {};
 
-        tx.update(userRef, { xp: newXp, level: newLevel, updatedAt: serverTimestamp() });
+          const newXp = (Number(data.xp||0) + earned);
+          const newLevel = calcLevelFromXp(newXp);
 
-        const playRef = doc(collection(db, "lottoPlays"));
-        tx.set(playRef, {
-          uid: user.uid,
-          nickname: data.nickname || user.displayName || "사용자",
-          picked,
-          drawn,
-          matchCount: m,
-          xpEarned: earned,
-          createdAt: serverTimestamp()
+          tx.update(userRef, { xp: newXp, level: newLevel, updatedAt: serverTimestamp() });
+
+          const playRef = doc(collection(db, "lottoPlays"));
+          tx.set(playRef, {
+            uid: user.uid,
+            nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
+            picked,
+            drawn,
+            matchCount: m,
+            xpEarned: earned,
+            createdAt: serverTimestamp()
+          });
         });
-      });
 
-      // 화면 갱신
-      await loadMe(user);
-      await loadRanking();
-
-      playBtn.disabled = false;
+        await loadMe(user);
+        await loadRanking();
+      }catch(e){
+        showErr(e);
+      }finally{
+        playBtn.disabled = false;
+      }
     }
 
     onAuthStateChanged(auth, async (user) => {
       if(!user){
-        location.href = "./index.html";
+        // ✅ 무한반복 방지: 로그인 후 다시 lotto.html로 복귀
+        location.replace("./index.html?next=lotto.html");
         return;
       }
-      await loadMe(user);
-      await loadRanking();
 
-      playBtn.onclick = () => playLotto(user);
+      clearErr();
+      try{
+        await loadMe(user);
+        await loadRanking();
+        playBtn.onclick = () => playLotto(user);
+      }catch(e){
+        showErr(e);
+      }
     });
   </script>
 </body>
