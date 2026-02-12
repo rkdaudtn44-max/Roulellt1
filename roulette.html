@@ -45,7 +45,7 @@
     .ok{color:var(--good);font-weight:900;font-size:13px}
     .bad{color:var(--bad);font-weight:900;font-size:13px;white-space:pre-wrap}
 
-    /* 에러 박스(흰화면 방지) */
+    /* 흰화면 방지용 치명적 오류 박스 */
     .fatal{
       max-width:820px;margin:14px auto 0;padding:12px 14px;
       background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;
@@ -82,7 +82,7 @@
         * 숫자 입력 후 버튼 누르면 그 횟수만큼 연속으로 저장돼요.
       </div>
 
-      <!-- ✅ 관리자 수동 지급 UI -->
+      <!-- 관리자 수동 지급 UI -->
       <div id="grantBox" style="display:none">
         <div class="hr"></div>
         <div class="row" style="align-items:flex-start">
@@ -120,7 +120,7 @@
     </div>
   </div>
 
-  <!-- ✅ Firebase compat로 통일 -->
+  <!-- Firebase compat -->
   <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
@@ -137,6 +137,9 @@
     window.addEventListener("error", (e)=> {
       fatal("JS 오류: " + (e.message || e.error || e));
     });
+    window.addEventListener("unhandledrejection", (e)=>{
+      fatal("Promise 오류: " + (e.reason?.message || e.reason || e));
+    });
 
     try {
       const firebaseConfig = {
@@ -152,17 +155,21 @@
 
       const auth = firebase.auth();
       const db = firebase.firestore();
-
       const $ = (id)=>document.getElementById(id);
 
-      // ✅ 관리자 이메일
+      // 관리자 이메일
       const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
       function escapeHtml(s){
-        return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+        return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
       }
+
+      // ✅ 핵심 수정: unescape 제거 (iOS/Safari 흰화면 원인 제거)
       function encodeKey(s){
-        const b64 = btoa(unescape(encodeURIComponent(String(s))));
+        const bytes = new TextEncoder().encode(String(s ?? ""));
+        let binary = "";
+        for (let i=0;i<bytes.length;i++) binary += String.fromCharCode(bytes[i]);
+        const b64 = btoa(binary);
         return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
       }
 
@@ -189,6 +196,7 @@
         $("grantOk").style.display="none"; $("grantOk").textContent="";
         $("grantErr").style.display="none"; $("grantErr").textContent="";
       }
+
       function readGrantAmount(){
         const el = $("grantAmount");
         let n = parseInt(el.value, 10);
@@ -197,6 +205,7 @@
         el.value = String(n);
         return n;
       }
+
       function readSpinCount(){
         const el = $("spinCount");
         let n = parseInt(el.value, 10);
@@ -279,6 +288,7 @@
         location.replace("index.html");
       });
 
+      // 룰렛 목록
       const ROULETTES = {
         normal: { label: "기본", items: [
           { text: "냥멍체[3분]", w: 1.7 },
@@ -357,6 +367,7 @@
       let profile = null;
       let isAdmin = false;
 
+      // UI: 타입 탭
       let currentType = "normal";
       const typeSeg = $("typeSeg");
       const itemsBox = $("itemsBox");
@@ -549,11 +560,13 @@
             if(i % 200 === 199) await new Promise(r=>setTimeout(r, 0));
           }
 
+          // counts 저장 (복권 항목은 counts에 저장 안함)
           for(const [itemText, cnt] of tally.entries()){
             if(isLottoItem(itemText)) continue;
             await applyDelta(targetNick, currentType, itemText, cnt);
           }
 
+          // 복권 티켓 자동 지급
           if(totalTicketsToGrant > 0){
             await grantLottoTicketsToNickname(targetNick, totalTicketsToGrant);
           }
