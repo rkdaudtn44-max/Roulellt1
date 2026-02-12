@@ -106,7 +106,10 @@
   import { getFirestore, doc, getDoc, collection, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
   const $ = (id)=>document.getElementById(id);
-
+// ✅ 실행 확인(이 문구가 안 바뀌면 "새 파일이 적용 안 됨" 또는 "스크립트 미실행")
+$("loadState").textContent = "스크립트 실행됨 ✅ (log build v1)";
+$("errBox").style.display = "block";
+$("errBox").textContent = "디버그: JS가 실행 중입니다. (여기서 멈추면 Firestore 쪽 문제)";
   function showError(e){
     const box = $("errBox");
     box.style.display = "block";
