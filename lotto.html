@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>복권 (3자리)</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--good:#10b981;--bad:#ef4444;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .top{position:sticky;top:0;background:rgba(246,247,251,.9);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);z-index:10}
+    .topin{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:10px}
+    .brand{font-weight:800}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+    .wrap{max-width:980px;margin:16px auto;padding:0 16px 30px}
+    .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:12px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+    .h{font-size:16px;font-weight:800;margin:0 0 10px}
+    .muted{color:var(--muted);font-size:13px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    select{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}
+    .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:8px 10px;background:#fff;font-size:13px}
+    .pill b{font-size:14px}
+    .resultBox{display:grid;gap:10px}
+    .nums{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .ball{width:42px;height:42px;border-radius:999px;border:1px solid var(--line);display:grid;place-items:center;background:#fff;font-weight:900;font-size:18px}
+    .ok{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.08)}
+    .bad{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08)}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;font-size:13px}
+    th{color:var(--muted);font-weight:700}
+    .right{text-align:right}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="topin">
+      <div class="brand">🎟️ 복권 (3자리)</div>
+      <div class="row">
+        <button class="btn" id="goHomeBtn">홈</button>
+        <button class="btn" id="logoutBtn">로그아웃</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="card">
+        <p class="h">복권 돌리기</p>
+        <p class="muted">0~9 숫자 3개를 선택 → 추첨 3개와 비교 → 경험치 지급 (3개 일치 50,000 / 2개 10,000 / 1개 5,000 / 0개 1,000)</p>
+
+        <div class="row" style="margin:12px 0 10px">
+          <select id="d1"></select>
+          <select id="d2"></select>
+          <select id="d3"></select>
+          <button class="btn pri" id="playBtn">돌리기</button>
+        </div>
+
+        <div class="resultBox" id="resultBox" style="display:none">
+          <div>
+            <div class="muted">내 선택</div>
+            <div class="nums" id="pickedView"></div>
+          </div>
+          <div>
+            <div class="muted">추첨 결과</div>
+            <div class="nums" id="drawnView"></div>
+          </div>
+          <div class="row">
+            <span class="pill">일치 개수 <b id="matchCount">0</b></span>
+            <span class="pill">획득 경험치 <b id="xpEarned">0</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="h">내 정보 / 랭킹 TOP5</p>
+        <div class="row" style="margin-bottom:10px">
+          <span class="pill">닉네임 <b id="meNick">-</b></span>
+          <span class="pill">레벨 <b id="meLevel">-</b></span>
+          <span class="pill">경험치 <b id="meXp">-</b></span>
+        </div>
+
+        <p class="muted" style="margin:10px 0 6px">TOP 5 (레벨 → 경험치 순)</p>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:42px">#</th>
+                <th>닉네임</th>
+                <th class="right">레벨</th>
+                <th class="right">경험치</th>
+              </tr>
+            </thead>
+            <tbody id="rankBody"></tbody>
+          </table>
+        </div>
+
+        <p class="muted" style="margin-top:10px">※ 보안 강하게 하려면(경험치 조작 방지) 나중에 Cloud Functions로 “서버에서 계산”하는 방식 추천.</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+    import {
+      getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection,
+      serverTimestamp, runTransaction, query, orderBy, limit, getDocs
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    // ✅ 네 Firebase 설정 그대로 유지해서 붙여넣기
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ----- 레벨 계산: 1레벨=100, 렙업마다 +100 (누적 요구치: 100 + 200 + 300 + ...)
+    function calcLevelFromXp(xp){
+      xp = Math.max(0, Number(xp||0));
+      // sum_{k=1..L} 100k = 50*L*(L+1)
+      // L = floor((sqrt(1 + 0.08*xp) - 1)/2)
+      const L = Math.floor((Math.sqrt(1 + 0.08 * xp) - 1) / 2);
+      return Math.max(1, L); // 최소 1레벨로 표시
+    }
+
+    function fillSelect(sel){
+      for(let i=0;i<=9;i++){
+        const op = document.createElement("option");
+        op.value = String(i);
+        op.textContent = String(i);
+        sel.appendChild(op);
+      }
+    }
+
+    const d1 = document.getElementById("d1");
+    const d2 = document.getElementById("d2");
+    const d3 = document.getElementById("d3");
+    [d1,d2,d3].forEach(fillSelect);
+
+    const playBtn = document.getElementById("playBtn");
+    const resultBox = document.getElementById("resultBox");
+    const pickedView = document.getElementById("pickedView");
+    const drawnView = document.getElementById("drawnView");
+    const matchCountEl = document.getElementById("matchCount");
+    const xpEarnedEl = document.getElementById("xpEarned");
+
+    const meNick = document.getElementById("meNick");
+    const meLevel = document.getElementById("meLevel");
+    const meXp = document.getElementById("meXp");
+    const rankBody = document.getElementById("rankBody");
+
+    document.getElementById("logoutBtn").onclick = async () => {
+      await signOut(auth);
+      location.href = "./index.html";
+    };
+
+    document.getElementById("goHomeBtn").onclick = () => {
+      // 네 홈이 index.html이면 유지 / 아니라면 파일명 바꿔줘
+      location.href = "./index.html";
+    };
+
+    function makeBall(n, cls=""){
+      const div = document.createElement("div");
+      div.className = "ball " + cls;
+      div.textContent = String(n);
+      return div;
+    }
+
+    function randomDigits3(){
+      return [0,0,0].map(()=>Math.floor(Math.random()*10));
+    }
+
+    // “개수 일치”를 중복 포함으로 계산 (순서 상관없이 0~3개)
+    function countMatches(picked, drawn){
+      const cntP = Array(10).fill(0);
+      const cntD = Array(10).fill(0);
+      picked.forEach(n=>cntP[n]++);
+      drawn.forEach(n=>cntD[n]++);
+      let m = 0;
+      for(let i=0;i<=9;i++) m += Math.min(cntP[i], cntD[i]);
+      return m; // 0~3
+    }
+
+    function xpByMatch(m){
+      if(m===3) return 50000;
+      if(m===2) return 10000;
+      if(m===1) return 5000;
+      return 1000;
+    }
+
+    async function ensureUserDoc(user){
+      const ref = doc(db, "users", user.uid);
+      const snap = await getDoc(ref);
+      if(!snap.exists()){
+        // nickname은 네 기존 구조에서 따로 저장한다면 여기 부분만 맞춰줘
+        const nickGuess = user.displayName || "사용자";
+        await setDoc(ref, {
+          uid: user.uid,
+          nickname: nickGuess,
+          role: "user",
+          xp: 0,
+          level: 1,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
+      return ref;
+    }
+
+    async function loadMe(user){
+      const ref = await ensureUserDoc(user);
+      const snap = await getDoc(ref);
+      const data = snap.data() || {};
+      meNick.textContent = data.nickname || "-";
+      meXp.textContent = String(data.xp ?? 0);
+      meLevel.textContent = String(data.level ?? calcLevelFromXp(data.xp ?? 0));
+      return { ref, data };
+    }
+
+    async function loadRanking(){
+      rankBody.innerHTML = "";
+      const q = query(collection(db, "users"), orderBy("level", "desc"), orderBy("xp", "desc"), limit(5));
+      const snaps = await getDocs(q);
+      let i=1;
+      snaps.forEach(s=>{
+        const u = s.data() || {};
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i++}</td>
+          <td>${(u.nickname || "-")}</td>
+          <td class="right">${(u.level ?? 1)}</td>
+          <td class="right">${(u.xp ?? 0)}</td>
+        `;
+        rankBody.appendChild(tr);
+      });
+    }
+
+    async function playLotto(user){
+      playBtn.disabled = true;
+
+      const picked = [Number(d1.value), Number(d2.value), Number(d3.value)];
+      const drawn = randomDigits3();
+      const m = countMatches(picked, drawn);
+      const earned = xpByMatch(m);
+
+      // UI 표시
+      pickedView.innerHTML = "";
+      drawnView.innerHTML = "";
+      picked.forEach(n=>pickedView.appendChild(makeBall(n)));
+      drawn.forEach(n=>drawnView.appendChild(makeBall(n)));
+      matchCountEl.textContent = String(m);
+      xpEarnedEl.textContent = String(earned);
+      resultBox.style.display = "grid";
+
+      // DB 저장 + 유저 경험치 트랜잭션 업데이트
+      const userRef = doc(db, "users", user.uid);
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(userRef);
+        if(!snap.exists()) throw new Error("users 문서가 없습니다.");
+        const data = snap.data() || {};
+        const newXp = (Number(data.xp||0) + earned);
+        const newLevel = calcLevelFromXp(newXp);
+
+        tx.update(userRef, { xp: newXp, level: newLevel, updatedAt: serverTimestamp() });
+
+        const playRef = doc(collection(db, "lottoPlays"));
+        tx.set(playRef, {
+          uid: user.uid,
+          nickname: data.nickname || user.displayName || "사용자",
+          picked,
+          drawn,
+          matchCount: m,
+          xpEarned: earned,
+          createdAt: serverTimestamp()
+        });
+      });
+
+      // 화면 갱신
+      await loadMe(user);
+      await loadRanking();
+
+      playBtn.disabled = false;
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if(!user){
+        location.href = "./index.html";
+        return;
+      }
+      await loadMe(user);
+      await loadRanking();
+
+      playBtn.onclick = () => playLotto(user);
+    });
+  </script>
+</body>
+</html>
