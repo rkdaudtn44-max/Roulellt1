@@ -1,99 +1,138 @@
-<!-- Firebase compat -->
-<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>로그인</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--bad:#ef4444;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    .wrap{max-width:520px;margin:0 auto;padding:18px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+    input{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:800;margin-top:8px}
+    .muted{color:var(--muted);font-size:13px}
+    .bad{color:var(--bad);font-weight:900;white-space:pre-wrap}
+    .fatal{display:none;background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;padding:12px 14px;color:#9f1239;font-weight:900;white-space:pre-wrap}
+    a{color:#111827}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="fatal" class="fatal"></div>
 
-<script>
-try {
+    <div class="card">
+      <div class="row">
+        <div style="font-weight:900;font-size:18px">접속 복구 페이지</div>
+        <div class="muted" id="who">로그아웃 상태</div>
+      </div>
+      <div class="muted" style="margin-top:8px">
+        지금은 “접속이 아예 안 되는” 상태를 먼저 해결하기 위한 임시 인덱스야.<br/>
+        에러가 나면 위에 빨간 박스로 이유가 뜬다.
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn" onclick="location.href='roulette.html'">룰렛</button>
+      <button class="btn" onclick="location.href='log.html'">기록</button>
+      <button class="btn" onclick="location.href='lotto.html'">복권</button>
+    </div>
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-  authDomain: "roulette-b5455.firebaseapp.com",
-  projectId: "roulette-b5455",
-  storageBucket: "roulette-b5455.appspot.com",
-  messagingSenderId: "728191308035",
-  appId: "1:728191308035:web:b14b46c38bbe0261969936"
-};
+    <div class="card">
+      <div style="font-weight:900">로그인</div>
+      <input id="email" placeholder="이메일" autocomplete="email"/>
+      <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password"/>
+      <div style="height:10px"></div>
+      <button class="btn pri" id="loginBtn">로그인</button>
+      <button class="btn" id="logoutBtn">로그아웃</button>
+      <div class="bad" id="msg" style="margin-top:10px"></div>
+    </div>
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
+    <div class="card">
+      <div style="font-weight:900">회원가입(테스트용)</div>
+      <input id="nick" placeholder="닉네임"/>
+      <div class="muted" style="margin-top:8px">※ 기존 회원가입 화면이 따로 있으면 여긴 쓰지 않아도 됨</div>
+      <div style="height:10px"></div>
+      <button class="btn" id="signupBtn">회원가입</button>
+    </div>
+  </div>
 
-const auth = firebase.auth();
-const db = firebase.firestore();
+  <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
-const emailEl = document.getElementById("email");
-const pwEl = document.getElementById("pw");
-const nickEl = document.getElementById("nick");
-const msgEl = document.getElementById("msg");
+  <script>
+  (function(){
+    const fatalEl = document.getElementById("fatal");
+    const msgEl = document.getElementById("msg");
+    const whoEl = document.getElementById("who");
+    function fatal(t){ fatalEl.style.display="block"; fatalEl.textContent=String(t||"오류"); }
+    function msg(t){ msgEl.textContent=String(t||""); }
 
-function msg(t){
-  if(msgEl) msgEl.textContent = t;
-}
+    window.addEventListener("error", (e)=>fatal("JS 오류: " + (e.message || e.error || e)));
+    window.addEventListener("unhandledrejection", (e)=>fatal("Promise 오류: " + (e.reason?.message || e.reason || e)));
 
-document.getElementById("loginBtn")?.addEventListener("click", async ()=>{
-  try{
-    await auth.signInWithEmailAndPassword(
-      emailEl.value.trim(),
-      pwEl.value
-    );
-    location.href = "roulette.html";
-  }catch(e){
-    msg("로그인 실패: " + e.message);
-  }
-});
+    try{
+      const firebaseConfig = {
+        apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+        authDomain: "roulette-b5455.firebaseapp.com",
+        projectId: "roulette-b5455",
+        storageBucket: "roulette-b5455.firebasestorage.app",
+        messagingSenderId: "728191308035",
+        appId: "1:728191308035:web:b14b46c38bbe0261969936"
+      };
+      if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
-document.getElementById("signupBtn")?.addEventListener("click", async ()=>{
-  try{
+      const auth = firebase.auth();
+      const db = firebase.firestore();
 
-    const email = emailEl.value.trim();
-    const password = pwEl.value;
-    const nickname = nickEl.value.trim();
+      const emailEl = document.getElementById("email");
+      const pwEl = document.getElementById("pw");
+      const nickEl = document.getElementById("nick");
 
-    if(!email || !password || !nickname){
-      msg("모든 값을 입력해줘.");
-      return;
+      document.getElementById("loginBtn").onclick = async ()=>{
+        msg("");
+        try{
+          await auth.signInWithEmailAndPassword(emailEl.value.trim(), pwEl.value);
+          location.href = "roulette.html";
+        }catch(e){
+          msg("로그인 실패: " + (e?.message || e));
+        }
+      };
+
+      document.getElementById("signupBtn").onclick = async ()=>{
+        msg("");
+        try{
+          const cred = await auth.createUserWithEmailAndPassword(emailEl.value.trim(), pwEl.value);
+          await db.collection("users").doc(cred.user.uid).set({
+            email: emailEl.value.trim(),
+            nickname: (nickEl.value||"").trim(),
+            role: "user",
+            xp: 0,
+            level: 1,
+            lottoTickets: 0,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge:true });
+
+          msg("회원가입 완료. roulette.html로 이동합니다.");
+          location.href="roulette.html";
+        }catch(e){
+          msg("회원가입 실패: " + (e?.message || e));
+        }
+      };
+
+      document.getElementById("logoutBtn").onclick = async ()=>{
+        await auth.signOut();
+      };
+
+      auth.onAuthStateChanged(u=>{
+        whoEl.textContent = u ? ("로그인됨: " + (u.email||"")) : "로그아웃 상태";
+      });
+
+    }catch(e){
+      fatal("초기화 실패: " + (e?.message || e));
     }
-
-    const cred = await auth.createUserWithEmailAndPassword(email, password);
-
-    await db.collection("users").doc(cred.user.uid).set({
-      email: email,
-      nickname: nickname,
-      role: "user",
-      xp: 0,
-      level: 1,
-      lottoTickets: 0,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    location.href = "roulette.html";
-
-  }catch(e){
-    msg("회원가입 실패: " + e.message);
-  }
-});
-
-auth.onAuthStateChanged(user=>{
-  const signedOut = document.getElementById("signedOut");
-  const signedIn = document.getElementById("signedIn");
-  const who = document.getElementById("who");
-
-  if(user){
-    if(signedOut) signedOut.style.display="none";
-    if(signedIn) signedIn.style.display="block";
-    if(who) who.textContent = "로그인됨: " + user.email;
-  }else{
-    if(signedOut) signedOut.style.display="block";
-    if(signedIn) signedIn.style.display="none";
-  }
-});
-
-document.getElementById("logoutBtn")?.addEventListener("click", async ()=>{
-  await auth.signOut();
-});
-
-} catch(e){
-  document.body.innerHTML = "<h2>스크립트 오류</h2><pre>"+e+"</pre>";
-}
-</script>
+  })();
+  </script>
+</body>
+</html>
