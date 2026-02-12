@@ -30,6 +30,18 @@
     th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;font-size:13px}
     th{color:var(--muted);font-weight:700}
     .right{text-align:right}
+
+    /* ✅ 자동횟수 입력 스타일(기존 틀 안 깨기) */
+    .countInput{
+      width:90px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:10px 10px;
+      font-weight:900;
+      font-size:15px;
+      background:#fff;
+      text-align:center;
+    }
   </style>
 </head>
 <body>
@@ -55,11 +67,20 @@
           <select id="d2"></select>
           <select id="d3"></select>
 
-          <!-- ✅ 티켓 표시 -->
           <span class="pill">티켓 <b id="ticketCount">0</b></span>
 
-          <button class="btn pri" id="playBtn">돌리기</button>
+          <!-- ✅ 자동 돌리기 횟수 -->
+          <span class="pill">자동횟수 <b style="display:none"> </b></span>
+          <input id="autoCount" class="countInput" type="number" min="1" max="999" value="1" inputmode="numeric" />
+
+          <!-- ✅ 1회 돌리기 -->
+          <button class="btn pri" id="playBtn">1회</button>
+          <!-- ✅ 자동 연속 돌리기 -->
+          <button class="btn" id="autoBtn">자동</button>
         </div>
+
+        <!-- ✅ 진행/완료 표시 -->
+        <div class="muted" id="autoProgress" style="display:none;margin-top:6px;"></div>
 
         <!-- ✅ 티켓 없을 때 안내 -->
         <div class="muted" id="ticketHint" style="display:none;margin-top:6px;">
@@ -151,10 +172,28 @@
     const ticketHint = $("ticketHint");
     let myTickets = 0;
 
+    const autoCountEl = $("autoCount");
+    const autoBtn = $("autoBtn");
+    const autoProgress = $("autoProgress");
+
+    function readAutoCount(){
+      let n = parseInt(autoCountEl.value, 10);
+      if(!Number.isFinite(n) || n < 1) n = 1;
+      if(n > 999) n = 999;
+      autoCountEl.value = String(n);
+      return n;
+    }
+
+    function setBusy(isBusy){
+      $("playBtn").disabled = isBusy || (myTickets||0) <= 0;
+      autoBtn.disabled = isBusy || (myTickets||0) <= 0;
+      autoCountEl.disabled = isBusy;
+    }
+
     function syncTicketUI(){
       ticketCountEl.textContent = String(myTickets || 0);
       if((myTickets||0) <= 0){
-        $("playBtn").disabled = true;
+        setBusy(false); // 내부에서 버튼 비활성 처리
         ticketHint.style.display = "block";
       }else{
         ticketHint.style.display = "none";
@@ -255,7 +294,7 @@
           role: "user",
           xp: 0,
           level: 1,
-          lottoTickets: 0,              // ✅ 추가
+          lottoTickets: 0,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         }, { merge: true });
@@ -276,7 +315,7 @@
 
       if(data.xp === undefined) patch.xp = 0;
       if(data.level === undefined) patch.level = calcLevelFromXp(data.xp ?? 0);
-      if(data.lottoTickets === undefined) patch.lottoTickets = 0; // ✅ 추가
+      if(data.lottoTickets === undefined) patch.lottoTickets = 0;
 
       if(Object.keys(patch).length){
         patch.updatedAt = serverTimestamp();
@@ -307,7 +346,6 @@
       meXp.textContent = String(data.xp ?? 0);
       meLevel.textContent = String(data.level ?? calcLevelFromXp(data.xp ?? 0));
 
-      // ✅ 티켓 반영
       myTickets = Number(data.lottoTickets || 0);
       syncTicketUI();
 
@@ -337,87 +375,161 @@
       });
     }
 
-    async function playLotto(user){
+    // ✅ 공통: 1회 실행(트랜잭션 포함)
+    async function playOnce(user){
+      const picked = [Number(d1.value), Number(d2.value), Number(d3.value)];
+      const drawn = randomDigits3();
+      const m = countMatches(picked, drawn);
+      const earned = xpByMatch(m);
+
+      const userRef = doc(db, "users", user.uid);
+      const pubRef  = doc(db, "publicUsers", user.uid);
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(userRef);
+        if(!snap.exists()) throw new Error("users 문서가 없습니다. (가입/로그인부터 다시 확인)");
+        const data = snap.data() || {};
+
+        const tickets = Number(data.lottoTickets || 0);
+        if(tickets <= 0){
+          throw new Error("복권 티켓이 없습니다. (지급 후 이용 가능)");
+        }
+
+        const oldXp = Number(data.xp||0);
+        const newXp = oldXp + earned;
+        const newLevel = calcLevelFromXp(newXp);
+
+        tx.update(userRef, {
+          lottoTickets: tickets - 1,
+          xp: newXp,
+          level: newLevel,
+          updatedAt: serverTimestamp()
+        });
+
+        tx.set(pubRef, {
+          uid: user.uid,
+          nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
+          xp: newXp,
+          level: newLevel,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        const playRef = doc(collection(db, "lottoPlays"));
+        tx.set(playRef, {
+          uid: user.uid,
+          nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
+          picked,
+          drawn,
+          matchCount: m,
+          xpEarned: earned,
+          createdAt: serverTimestamp()
+        });
+      });
+
+      return { picked, drawn, m, earned };
+    }
+
+    function renderResult(picked, drawn, m, earned){
+      pickedView.innerHTML = "";
+      drawnView.innerHTML = "";
+      picked.forEach(n=>pickedView.appendChild(makeBall(n)));
+      drawn.forEach(n=>drawnView.appendChild(makeBall(n)));
+      matchCountEl.textContent = String(m);
+      xpEarnedEl.textContent = String(earned);
+      resultBox.style.display = "grid";
+    }
+
+    // ✅ 1회 버튼
+    async function playLottoOnce(user){
       clearErr();
 
-      // ✅ UI 단계에서 1차 차단
       if((myTickets||0) <= 0){
         syncTicketUI();
         throw new Error("복권 티켓이 없습니다. 룰렛에서 “복권” 항목 지급을 받아야 합니다.");
       }
 
-      playBtn.disabled = true;
+      setBusy(true);
+      autoProgress.style.display = "none";
+      autoProgress.textContent = "";
 
       try{
-        const picked = [Number(d1.value), Number(d2.value), Number(d3.value)];
-        const drawn = randomDigits3();
-        const m = countMatches(picked, drawn);
-        const earned = xpByMatch(m);
+        const r = await playOnce(user);
 
-        // UI 표시
-        pickedView.innerHTML = "";
-        drawnView.innerHTML = "";
-        picked.forEach(n=>pickedView.appendChild(makeBall(n)));
-        drawn.forEach(n=>drawnView.appendChild(makeBall(n)));
-        matchCountEl.textContent = String(m);
-        xpEarnedEl.textContent = String(earned);
-        resultBox.style.display = "grid";
-
-        const userRef = doc(db, "users", user.uid);
-        const pubRef  = doc(db, "publicUsers", user.uid);
-
-        // ✅ DB에서 2차 차단 + 티켓 1장 차감 (치트 방지)
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(userRef);
-          if(!snap.exists()) throw new Error("users 문서가 없습니다. (가입/로그인부터 다시 확인)");
-          const data = snap.data() || {};
-
-          const tickets = Number(data.lottoTickets || 0);
-          if(tickets <= 0){
-            throw new Error("복권 티켓이 없습니다. (지급 후 이용 가능)");
-          }
-
-          const oldXp = Number(data.xp||0);
-          const newXp = oldXp + earned;
-          const newLevel = calcLevelFromXp(newXp);
-
-          tx.update(userRef, {
-            lottoTickets: tickets - 1, // ✅ 티켓 소모
-            xp: newXp,
-            level: newLevel,
-            updatedAt: serverTimestamp()
-          });
-
-          tx.set(pubRef, {
-            uid: user.uid,
-            nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
-            xp: newXp,
-            level: newLevel,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-
-          const playRef = doc(collection(db, "lottoPlays"));
-          tx.set(playRef, {
-            uid: user.uid,
-            nickname: data.nickname || (user.email ? user.email.split("@")[0] : "사용자"),
-            picked,
-            drawn,
-            matchCount: m,
-            xpEarned: earned,
-            createdAt: serverTimestamp()
-          });
-        });
+        // 로컬 티켓/결과 반영
+        myTickets = Math.max(0, (myTickets||0) - 1);
+        syncTicketUI();
+        renderResult(r.picked, r.drawn, r.m, r.earned);
 
         await loadMe(user);
         await loadRanking();
       }catch(e){
         showErr(e);
       }finally{
-        // ✅ 티켓이 0이 되었을 수 있으니 다시 UI 동기화
+        setBusy(false);
         syncTicketUI();
-        if((myTickets||0) > 0){
-          playBtn.disabled = false;
+      }
+    }
+
+    // ✅ 자동 연속 버튼
+    async function playLottoAuto(user){
+      clearErr();
+
+      const want = readAutoCount();
+      if(want <= 0) return;
+
+      if((myTickets||0) <= 0){
+        syncTicketUI();
+        throw new Error("복권 티켓이 없습니다. 룰렛에서 “복권” 항목 지급을 받아야 합니다.");
+      }
+
+      const canRun = Math.min(want, myTickets); // 티켓 있는 만큼만
+      setBusy(true);
+
+      autoProgress.style.display = "block";
+      autoProgress.textContent = `진행 중... 0 / ${canRun}`;
+
+      // 통계
+      let done = 0;
+      let totalEarned = 0;
+      const dist = {0:0,1:0,2:0,3:0};
+
+      // 마지막 결과 표시용
+      let last = null;
+
+      try{
+        for(let i=0;i<canRun;i++){
+          const r = await playOnce(user);
+
+          done += 1;
+          totalEarned += r.earned;
+          dist[r.m] = (dist[r.m]||0) + 1;
+          last = r;
+
+          myTickets = Math.max(0, (myTickets||0) - 1);
+          syncTicketUI();
+
+          autoProgress.textContent =
+            `진행 중... ${done} / ${canRun} (총 경험치 +${totalEarned}, 남은 티켓 ${myTickets})`;
+
+          // 브라우저 멈춤 방지
+          if(i % 25 === 24) await new Promise(r=>setTimeout(r, 0));
         }
+
+        if(last){
+          renderResult(last.picked, last.drawn, last.m, last.earned);
+        }
+
+        await loadMe(user);
+        await loadRanking();
+
+        autoProgress.textContent =
+          `완료: ${done}회 / 총 경험치 +${totalEarned} / 일치(0:${dist[0]} 1:${dist[1]} 2:${dist[2]} 3:${dist[3]}) / 남은 티켓 ${myTickets}`;
+
+      }catch(e){
+        showErr(e);
+      }finally{
+        setBusy(false);
+        syncTicketUI();
       }
     }
 
@@ -432,8 +544,8 @@
         await loadMe(user);
         await loadRanking();
 
-        // ✅ 티켓 0이면 눌러도 못 돌게 (handler는 유지)
-        playBtn.onclick = () => playLotto(user);
+        playBtn.onclick = () => playLottoOnce(user);
+        autoBtn.onclick = () => playLottoAuto(user);
       }catch(e){
         showErr(e);
       }
