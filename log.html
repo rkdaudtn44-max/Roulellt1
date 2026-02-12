@@ -15,7 +15,6 @@
     .muted{color:var(--muted);font-size:13px}
     .danger{color:var(--danger);font-weight:900;font-size:13px}
 
-    /* ✅ 흰화면 방지용 치명적 에러 박스 */
     .fatal{
       max-width:900px;margin:12px auto 0;padding:12px 14px;
       background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;
@@ -37,9 +36,7 @@
     .small{font-size:12px;color:var(--muted)}
 
     .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
-    @media (min-width: 740px){
-      .rowsGrid{grid-template-columns:1fr 1fr;}
-    }
+    @media (min-width: 740px){ .rowsGrid{grid-template-columns:1fr 1fr;} }
     .itemCard{
       border:1px solid var(--line);
       border-radius:14px;
@@ -66,11 +63,7 @@
       align-items:center;
       gap:6px;
     }
-    .tab.on{
-      background:#111827;
-      border-color:#111827;
-      color:#fff;
-    }
+    .tab.on{ background:#111827; border-color:#111827; color:#fff; }
     .tab .tcount{
       border:1px solid rgba(255,255,255,.25);
       background:rgba(255,255,255,.12);
@@ -120,7 +113,6 @@
     runTransaction
   } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-  // ✅ 흰화면 방지: 전역 오류를 화면에 표시
   const fatalEl = document.getElementById("fatal");
   function fatal(msg){
     fatalEl.style.display = "block";
@@ -149,7 +141,6 @@
 
   const $ = (id)=>document.getElementById(id);
 
-  // ✅ 관리자 이메일
   const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
   function escapeHtml(s){
@@ -168,7 +159,6 @@
     box.textContent = "";
   }
 
-  // ✅ 닉네임 정규화(룰렛/복권/로그 동일)
   function normNick(v){
     return String(v ?? "")
       .normalize("NFC")
@@ -183,18 +173,46 @@
     return "";
   }
 
+  /* ===========================
+     ✅ 멈춤(무한 로딩) 방지 핵심: 타임아웃 래퍼
+     =========================== */
+  const TIMEOUT_MS = 12000;
+
+  function withTimeout(promise, ms, label){
+    return Promise.race([
+      promise,
+      new Promise((_, rej)=>setTimeout(()=>{
+        const err = new Error(`${label} : 응답이 너무 오래 걸려서 중단했어요(타임아웃 ${ms}ms)`);
+        err.code = "timeout";
+        rej(err);
+      }, ms))
+    ]);
+  }
+
+  async function safeGetDoc(ref, label){
+    return await withTimeout(getDoc(ref), TIMEOUT_MS, label);
+  }
+
+  async function safeGetDocs(ref, label){
+    return await withTimeout(getDocs(ref), TIMEOUT_MS, label);
+  }
+
+  function setState(msg){
+    $("loadState").textContent = msg;
+  }
+
   async function getProfile(uid){
-    const snap = await getDoc(doc(db, "users", uid));
+    setState("프로필 불러오는 중…");
+    const snap = await safeGetDoc(doc(db, "users", uid), "users/{uid} getDoc");
     return snap.exists() ? snap.data() : null;
   }
 
   async function getNickList(isAdmin, myNick){
     if(isAdmin){
-      // ✅ 관리자는 counts 최상위 문서(id=nickname) 목록
-      const snap = await getDocs(collection(db, "counts"));
+      setState("닉네임 목록 불러오는 중…(관리자)");
+      const snap = await safeGetDocs(collection(db, "counts"), "counts getDocs(list)");
       return snap.docs.map(d=>d.id);
     }
-    // ✅ 일반은 본인 닉만
     return [myNick];
   }
 
@@ -205,11 +223,18 @@
 
     const byType = { normal: [], noble: [], time: [] };
 
-    // counts/{nick}/types/*
-    const typesSnap = await getDocs(collection(db, "counts", nick, "types"));
+    setState(`${nick} · 타입 목록 불러오는 중…`);
+    const typesSnap = await safeGetDocs(collection(db, "counts", nick, "types"), `counts/${nick}/types getDocs(list)`);
+
     for(const tDoc of typesSnap.docs){
       const type = tDoc.id;
-      const itemsSnap = await getDocs(collection(db, "counts", nick, "types", type, "items"));
+
+      setState(`${nick} · ${type} 항목 불러오는 중…`);
+      const itemsSnap = await safeGetDocs(
+        collection(db, "counts", nick, "types", type, "items"),
+        `counts/${nick}/types/${type}/items getDocs(list)`
+      );
+
       for(const it of itemsSnap.docs){
         const d = it.data() || {};
         const row = {
@@ -234,21 +259,25 @@
 
     const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
 
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(itemRef);
+    await withTimeout(
+      runTransaction(db, async (tx)=>{
+        const snap = await tx.get(itemRef);
 
-      if(!snap.exists()){
-        if(delta <= 0) return;
-        tx.set(itemRef, { itemText, count: delta });
-        return;
-      }
+        if(!snap.exists()){
+          if(delta <= 0) return;
+          tx.set(itemRef, { itemText, count: delta });
+          return;
+        }
 
-      const cur = Number(snap.data()?.count || 0);
-      const next = Math.max(0, cur + delta);
+        const cur = Number(snap.data()?.count || 0);
+        const next = Math.max(0, cur + delta);
 
-      if(next === 0) tx.delete(itemRef);
-      else tx.update(itemRef, { count: next, itemText });
-    });
+        if(next === 0) tx.delete(itemRef);
+        else tx.update(itemRef, { count: next, itemText });
+      }),
+      TIMEOUT_MS,
+      "runTransaction"
+    );
   }
 
   function sumRows(list){
@@ -269,7 +298,6 @@
   let profile = null;
   let isAdmin = false;
 
-  // ✅ UI 상태 유지(펼침 상태/탭)
   const openSet = new Set();
   const tabByNick = new Map();
   let grandTotal = 0;
@@ -288,11 +316,17 @@
 
     try{
       clearError();
-      $("loadState").textContent = "초기화 중…";
+      setState("초기화 중…");
+
+      if(!navigator.onLine){
+        showError({ message: "현재 오프라인 상태예요. 인터넷 연결 확인 후 다시 시도해줘." });
+        setState("오프라인");
+        return;
+      }
 
       profile = await getProfile(u.uid);
       if(!profile){
-        $("loadState").textContent = "프로필이 없습니다.";
+        setState("프로필이 없습니다.");
         showError({ message: "users/{uid} 문서가 없어요. 회원가입이 정상 완료됐는지 확인해줘." });
         return;
       }
@@ -300,7 +334,7 @@
       const myNick = normNick(profile.nickname);
       const nickErr = validateNickForDocId(myNick);
       if(nickErr){
-        $("loadState").textContent = "닉네임이 비정상이에요.";
+        setState("닉네임이 비정상이에요.");
         showError({ message: "users/{uid}.nickname 값이 비어있거나 문서ID로 사용할 수 없는 문자(/, \\)가 포함되어 있어요." });
         return;
       }
@@ -316,17 +350,15 @@
 
       await render();
     }catch(e){
-      $("loadState").textContent = "초기화 실패";
+      setState("초기화 실패");
       showError(e);
-
-      // 정말 심한 경우에만 fatal로 띄워서 “흰화면”이 아닌 “원인”이 보이게
       fatal("초기화 중 오류:\n" + (e?.message || e));
     }
   });
 
   async function render(){
     clearError();
-    $("loadState").textContent = "불러오는 중…";
+    setState("불러오는 중…");
     const accBox = $("accBox");
     accBox.innerHTML = "";
 
@@ -338,7 +370,7 @@
         .sort((a,b)=>a.localeCompare(b,"ko"));
 
       if(nicks.length === 0){
-        $("loadState").textContent = "표시할 기록이 없어요.";
+        setState("표시할 기록이 없어요.");
         accBox.innerHTML = `<div class="card"><div class="muted">표시할 기록이 없어요.</div></div>`;
         return;
       }
@@ -381,11 +413,7 @@
         const tabs = document.createElement("div");
         tabs.className = "tabs";
 
-        const tabCounts = {
-          normal: sumNormal,
-          noble: sumNoble,
-          time: sumTime
-        };
+        const tabCounts = { normal: sumNormal, noble: sumNoble, time: sumTime };
 
         const headTable = document.createElement("div");
         headTable.className = "table";
@@ -437,8 +465,7 @@
             const badgeEl = card.querySelector("[data-badge]");
 
             plusBtn.onclick = async (ev)=>{
-              ev.preventDefault();
-              ev.stopPropagation();
+              ev.preventDefault(); ev.stopPropagation();
               if(!isAdmin) return;
 
               plusBtn.disabled = true;
@@ -456,9 +483,9 @@
                 badgeEl.textContent = `${newNickSum}회`;
 
                 grandTotal += 1;
-                $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+                setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
 
-                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
+                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
               }catch(e){
@@ -470,8 +497,7 @@
             };
 
             minusBtn.onclick = async (ev)=>{
-              ev.preventDefault();
-              ev.stopPropagation();
+              ev.preventDefault(); ev.stopPropagation();
               if(!isAdmin) return;
               if(r.v <= 0) return;
 
@@ -494,9 +520,9 @@
                 badgeEl.textContent = `${newNickSum}회`;
 
                 grandTotal = Math.max(0, grandTotal - 1);
-                $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+                setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
 
-                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
+                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
                 if(grid.children.length === 0){
@@ -525,8 +551,7 @@
           b.innerHTML = `${safeTypeLabel(t)} <span class="tcount">${tabCounts[t]||0}</span>`;
 
           b.onclick = (ev)=>{
-            ev.preventDefault();
-            ev.stopPropagation();
+            ev.preventDefault(); ev.stopPropagation();
             renderTypeGrid(t);
           };
 
@@ -540,18 +565,44 @@
         renderTypeGrid(currentTab);
         accBox.appendChild(card);
 
-        // ✅ 리스트가 길어져도 브라우저 멈춤 방지
         if(idx % 15 === 14) await new Promise(r=>setTimeout(r, 0));
       }
 
-      $("loadState").textContent = `불러오기 완료 ✅ (합산 총 ${grandTotal}회)`;
+      setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
     }catch(e){
-      $("loadState").textContent = "불러오기 실패";
+      setState("불러오기 실패");
       showError(e);
 
-      // 권한 문제/규칙 문제는 여기서 바로 보이게
-      if(String(e?.code||"").includes("permission-denied")){
-        fatal("권한 오류(permission-denied)\n\nFirestore 규칙에서 log.html 읽기가 막혔어요.\n- 관리자는 counts 전체 읽기 허용\n- 일반 유저는 본인 nickname 문서만 읽기 허용\n\n현재 규칙/닉네임 저장 상태를 확인해야 합니다.");
+      const code = String(e?.code || "");
+      const msg  = String(e?.message || e);
+
+      if(code.includes("permission-denied") || msg.includes("permission-denied")){
+        fatal(
+`권한 오류(permission-denied)
+
+Firestore 규칙에서 log.html 읽기가 막혔어요.
+- 관리자: counts 전체 읽기 허용
+- 일반유저: counts/{내닉} 아래만 읽기 허용
+
+지금 뜬 오류:
+${code} ${msg}`
+        );
+      }
+
+      if(code === "timeout"){
+        fatal(
+`무한 로딩(응답 지연/차단) 감지
+
+지금 멈춘 단계:
+${msg}
+
+가능한 원인:
+1) Firestore 규칙/권한 문제로 요청이 막힘
+2) 네트워크/와이파이/프라이빗 릴레이/차단 앱으로 gstatic 또는 firestore 요청이 지연
+3) counts 문서/서브컬렉션이 너무 많아 로딩이 과도
+
+→ 위 메시지에 "어떤 단계"에서 멈췄는지 적혀있어요.`
+        );
       }
     }
   }
