@@ -44,9 +44,18 @@
     .hr{height:1px;background:var(--line);margin:12px 0}
     .ok{color:var(--good);font-weight:900;font-size:13px}
     .bad{color:var(--bad);font-weight:900;font-size:13px;white-space:pre-wrap}
+
+    /* 에러 박스(흰화면 방지) */
+    .fatal{
+      max-width:820px;margin:14px auto 0;padding:12px 14px;
+      background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;
+      color:#9f1239;font-weight:900;display:none;white-space:pre-wrap;
+    }
   </style>
 </head>
 <body>
+  <div id="fatal" class="fatal"></div>
+
   <div class="top">
     <button class="btn" onclick="location.href='log.html'">기록 보기</button>
     <div style="flex:1"></div>
@@ -88,7 +97,7 @@
           </div>
         </div>
         <div class="muted" style="margin-top:8px">
-          - 닉네임 지급: 위쪽 “기록될 닉네임” 칸(또는 입력값) 기준으로 지급<br/>
+          - 닉네임 지급: 위쪽 “기록될 닉네임” 칸 기준으로 지급<br/>
           - 전체 지급: 가입된 전체 유저(= nicknames 컬렉션 기준)에게 동일 수량 지급
         </div>
         <div style="height:8px"></div>
@@ -111,486 +120,459 @@
     </div>
   </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import {
-    getFirestore,
-    doc,
-    getDoc,
-    runTransaction,
-    setDoc,
-    serverTimestamp,
-    collection,
-    getDocs
-  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  <!-- ✅ Firebase compat로 통일 -->
+  <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore-compat.js"></script>
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
-    authDomain: "roulette-b5455.firebaseapp.com",
-    projectId: "roulette-b5455",
-    storageBucket: "roulette-b5455.firebasestorage.app",
-    messagingSenderId: "728191308035",
-    appId: "1:728191308035:web:b14b46c38bbe0261969936",
-    measurementId: "G-SPY41ZKXYQ"
-  };
+  <script>
+  (function(){
+    const fatalEl = document.getElementById("fatal");
+    function fatal(msg){
+      fatalEl.style.display = "block";
+      fatalEl.textContent = String(msg || "오류");
+    }
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  const $ = (id)=>document.getElementById(id);
-
-  // ✅ 관리자 이메일로만 admin 판별
-  const ADMIN_EMAILS = ["dori0223@gmail.com"];
-
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-  function encodeKey(s){
-    const b64 = btoa(unescape(encodeURIComponent(String(s))));
-    return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  }
-
-  // ✅ index.html과 동일 기준으로 통일 (중요!)
-  function normNick(v){
-    return String(v ?? "")
-      .normalize("NFC")
-      .trim()
-      .replace(/\s+/g, " ");
-  }
-
-  // ✅ 문서ID로 안전하지 않은 문자 방지
-  function validateNickForDocId(nick){
-    if(!nick) return "닉네임을 입력해줘.";
-    if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
-    return "";
-  }
-
-  function showGrantOk(msg){
-    const ok = $("grantOk");
-    const er = $("grantErr");
-    er.style.display = "none"; er.textContent = "";
-    ok.style.display = "block";
-    ok.textContent = msg;
-  }
-  function showGrantErr(e){
-    const ok = $("grantOk");
-    const er = $("grantErr");
-    ok.style.display = "none"; ok.textContent = "";
-    er.style.display = "block";
-    er.textContent = "오류: " + (e?.message || e);
-  }
-  function clearGrantMsg(){
-    $("grantOk").style.display = "none";
-    $("grantOk").textContent = "";
-    $("grantErr").style.display = "none";
-    $("grantErr").textContent = "";
-  }
-
-  function readGrantAmount(){
-    const el = $("grantAmount");
-    let n = parseInt(el.value, 10);
-    if(!Number.isFinite(n) || n < 1) n = 1;
-    if(n > 1000000) n = 1000000;
-    el.value = String(n);
-    return n;
-  }
-
-  async function getProfile(uid){
-    const snap = await getDoc(doc(db, "users", uid));
-    return snap.exists() ? snap.data() : null;
-  }
-
-  // ✅ nicknames/{닉} 존재 여부 (정규화 + 검증 포함)
-  async function nicknameExists(nickRaw){
-    const nick = normNick(nickRaw);
-    const err = validateNickForDocId(nick);
-    if(err) throw new Error(err);
-    const snap = await getDoc(doc(db, "nicknames", nick));
-    return snap.exists();
-  }
-
-  // ✅ nicknames/{닉} -> uid 가져오기 (정규화 + 검증 포함)
-  async function getUidByNickname(nickRaw){
-    const nick = normNick(nickRaw);
-    const err = validateNickForDocId(nick);
-    if(err) throw new Error(err);
-
-    const snap = await getDoc(doc(db, "nicknames", nick));
-    if(!snap.exists()) return null;
-    const uid = snap.data()?.uid;
-    return uid || null;
-  }
-
-  // ✅ nicknames 컬렉션에서 전체 uid 목록 가져오기(전체지급)
-  async function getAllUidsFromNicknames(){
-    const snaps = await getDocs(collection(db, "nicknames"));
-    const uids = [];
-    snaps.forEach(d=>{
-      const uid = d.data()?.uid;
-      if(uid) uids.push(uid);
+    // 흰화면 방지: 전역 오류 표시
+    window.addEventListener("error", (e)=> {
+      fatal("JS 오류: " + (e.message || e.error || e));
     });
-    return Array.from(new Set(uids));
-  }
 
-  // ✅ "복권"이 들어간 항목 텍스트에서 지급 장수 파싱
-  function parseLottoTicketAmount(itemText){
-    const s = String(itemText || "");
-    if(!s.includes("복권")) return 0;
+    try {
+      const firebaseConfig = {
+        apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+        authDomain: "roulette-b5455.firebaseapp.com",
+        projectId: "roulette-b5455",
+        storageBucket: "roulette-b5455.firebasestorage.app",
+        messagingSenderId: "728191308035",
+        appId: "1:728191308035:web:b14b46c38bbe0261969936"
+      };
 
-    const m = s.match(/(\d+)/);
-    if(!m) return 1;
+      if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
-    const n = parseInt(m[1], 10);
-    if(!Number.isFinite(n) || n <= 0) return 1;
-    return n;
-  }
+      const auth = firebase.auth();
+      const db = firebase.firestore();
 
-  function isLottoItem(itemText){
-    return String(itemText || "").includes("복권");
-  }
+      const $ = (id)=>document.getElementById(id);
 
-  async function grantLottoTicketsToUid(uid, ticketsToAdd){
-    ticketsToAdd = Number(ticketsToAdd || 0);
-    if(!Number.isFinite(ticketsToAdd) || ticketsToAdd <= 0) return;
+      // ✅ 관리자 이메일
+      const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
-    const userRef = doc(db, "users", uid);
+      function escapeHtml(s){
+        return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+      }
+      function encodeKey(s){
+        const b64 = btoa(unescape(encodeURIComponent(String(s))));
+        return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      }
 
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(userRef);
-      if(!snap.exists()) throw new Error("해당 유저 users 문서가 없습니다.");
+      function normNick(v){
+        return String(v ?? "").normalize("NFC").trim().replace(/\s+/g, " ");
+      }
+      function validateNickForDocId(nick){
+        if(!nick) return "닉네임을 입력해줘.";
+        if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
+        return "";
+      }
 
-      const cur = Number(snap.data()?.lottoTickets || 0);
-      const next = cur + ticketsToAdd;
+      function showGrantOk(m){
+        const ok = $("grantOk"), er = $("grantErr");
+        er.style.display="none"; er.textContent="";
+        ok.style.display="block"; ok.textContent=m;
+      }
+      function showGrantErr(e){
+        const ok = $("grantOk"), er = $("grantErr");
+        ok.style.display="none"; ok.textContent="";
+        er.style.display="block"; er.textContent="오류: " + (e?.message || e);
+      }
+      function clearGrantMsg(){
+        $("grantOk").style.display="none"; $("grantOk").textContent="";
+        $("grantErr").style.display="none"; $("grantErr").textContent="";
+      }
+      function readGrantAmount(){
+        const el = $("grantAmount");
+        let n = parseInt(el.value, 10);
+        if(!Number.isFinite(n) || n < 1) n = 1;
+        if(n > 1000000) n = 1000000;
+        el.value = String(n);
+        return n;
+      }
+      function readSpinCount(){
+        const el = $("spinCount");
+        let n = parseInt(el.value, 10);
+        if(!Number.isFinite(n) || n < 1) n = 1;
+        if(n > 999) n = 999;
+        el.value = String(n);
+        return n;
+      }
 
-      tx.update(userRef, {
-        lottoTickets: next,
-        updatedAt: serverTimestamp()
+      async function getProfile(uid){
+        const snap = await db.collection("users").doc(uid).get();
+        return snap.exists ? snap.data() : null;
+      }
+
+      async function nicknameExists(nickRaw){
+        const nick = normNick(nickRaw);
+        const err = validateNickForDocId(nick);
+        if(err) throw new Error(err);
+        const snap = await db.collection("nicknames").doc(nick).get();
+        return snap.exists;
+      }
+
+      async function getUidByNickname(nickRaw){
+        const nick = normNick(nickRaw);
+        const err = validateNickForDocId(nick);
+        if(err) throw new Error(err);
+        const snap = await db.collection("nicknames").doc(nick).get();
+        if(!snap.exists) return null;
+        return snap.data()?.uid || null;
+      }
+
+      async function getAllUidsFromNicknames(){
+        const snaps = await db.collection("nicknames").get();
+        const uids = [];
+        snaps.forEach(d=>{
+          const uid = d.data()?.uid;
+          if(uid) uids.push(uid);
+        });
+        return Array.from(new Set(uids));
+      }
+
+      function parseLottoTicketAmount(itemText){
+        const s = String(itemText || "");
+        if(!s.includes("복권")) return 0;
+        const m = s.match(/(\d+)/);
+        if(!m) return 1;
+        const n = parseInt(m[1], 10);
+        if(!Number.isFinite(n) || n <= 0) return 1;
+        return n;
+      }
+      function isLottoItem(itemText){
+        return String(itemText || "").includes("복권");
+      }
+
+      async function grantLottoTicketsToUid(uid, ticketsToAdd){
+        ticketsToAdd = Number(ticketsToAdd || 0);
+        if(!Number.isFinite(ticketsToAdd) || ticketsToAdd <= 0) return;
+
+        const userRef = db.collection("users").doc(uid);
+        await db.runTransaction(async (tx)=>{
+          const snap = await tx.get(userRef);
+          if(!snap.exists) throw new Error("해당 유저 users 문서가 없습니다.");
+          const cur = Number(snap.data()?.lottoTickets || 0);
+          tx.update(userRef, {
+            lottoTickets: cur + ticketsToAdd,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
+      }
+
+      async function grantLottoTicketsToNickname(targetNickRaw, ticketsToAdd){
+        const uid = await getUidByNickname(targetNickRaw);
+        const targetNick = normNick(targetNickRaw);
+        if(!uid) throw new Error(`존재하지 않는 닉네임: ${targetNick}`);
+        await grantLottoTicketsToUid(uid, ticketsToAdd);
+      }
+
+      $("logoutBtn").addEventListener("click", async ()=>{
+        await auth.signOut();
+        location.replace("index.html");
       });
-    });
-  }
 
-  async function grantLottoTicketsToNickname(targetNickRaw, ticketsToAdd){
-    const uid = await getUidByNickname(targetNickRaw);
-    const targetNick = normNick(targetNickRaw);
-    if(!uid) throw new Error(`존재하지 않는 닉네임: ${targetNick}`);
-    await grantLottoTicketsToUid(uid, ticketsToAdd);
-  }
+      const ROULETTES = {
+        normal: { label: "기본", items: [
+          { text: "냥멍체[3분]", w: 1.7 },
+          { text: "원하는체[3분_5글자]", w: 1.7 },
+          { text: "짧은애교대사[5줄 이하]", w: 0.85 },
+          { text: "팬보드", w: 0.85 },
+          { text: "혀봉인[1분]", w: 1.7 },
+          { text: "받침봉인[1분]", w: 1.7 },
+          { text: "영 어금지[3분]", w: 1.7 },
+          { text: "침뱉기", w: 1.7 },
+          { text: "짧은팬보드[1~2줄]", w: 1.7 },
+          { text: "실드+100", w: 2.3 },
+          { text: "실드-100", w: 2.3 },
+          { text: "ASMR방송[3분]", w: 1.7 },
+          { text: "룰렛 다돌권", w: 3.4 },
+          { text: "헬기 리액[킵x]", w: 1.7 },
+          { text: "ㅇ받침체[2분]", w: 1.7 },
+          { text: "출석체크 리액[킵x]", w: 3.4 },
+          { text: "브라보[킵x]", w: 3.4 },
+          { text: "3인칭[1분]", w: 3.4 },
+          { text: "방종까지 쉴드 0개[킵x]", w: 0.85 },
+          { text: "발박수", w: 3.4 },
+          { text: "방제 변경권[10분/킵 불가]", w: 1.7 },
+          { text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
+          { text: "연하충애교도리[1분]", w: 0.85 },
+          { text: "봉인추가", w: 1.7 },
+          { text: "봉인제거", w: 1.7 },
+          { text: "이쑤시개 리액션[킵x]", w: 1.7 },
+          { text: "배통통[킵x]", w: 3.4 },
+          { text: "공지변경권[다음 방송까지]", w: 1.7 },
+          { text: "박수 3번[킵x]", w: 3.4 },
+          { text: "투명의자 1분[킵x]", w: 1.7 },
+          { text: "스쿼트 5개[킵x]", w: 1.7 },
+          { text: "벽찍[킵x]", w: 3.4 },
+          { text: "TMI 1개 올리기", w: 1.7 },
+          { text: "이름 3번 불러주기", w: 1.7 },
+          { text: "복권 1개 지급", w: 8 },
+          { text: "복권 10개 지급", w: 6 },
+          { text: "복권 20개 지급", w: 3 },
+          { text: "복권 30개 지급", w: 1.7 },
+          { text: "꽝", w: 12.1 }
+        ]},
+        noble: { label: "귀족", items: [
+          { text: "24시간 닉변권", w: 5 },
+          { text: "24시간 역닉변권", w: 5 },
+          { text: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w: 4 },
+          { text: "단독 박제편지", w: 4 },
+          { text: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w: 4 },
+          { text: "캐스트 저장권 2회", w: 13 },
+          { text: "실드 2배", w: 5 },
+          { text: "실드펑 2배", w: 5 },
+          { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 4 },
+          { text: "귀족룰렛 다돌권", w: 10 },
+          { text: "원하는 이름으로 캐스트 저장권", w: 5 },
+          { text: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w: 4 },
+          { text: "실드 음수로 변경", w: 4 },
+          { text: "실드 양수로 변경", w: 4 },
+          { text: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w: 4 },
+          { text: "팬보드 3개 추가", w: 5 },
+          { text: "복권 100장", w: 5 },
+          { text: "복권 1000장", w: 5 },
+          { text: "도리 용돈", w: 5 }
+        ]},
+        time: { label: "시간", items: [
+          { text: "방송 연장권 +1분", w: 41 },
+          { text: "방송 연장권 +10분", w: 5 },
+          { text: "방송 연장권 +20분", w: 3 },
+          { text: "방송 연장권 +30분", w: 1 },
+          { text: "방송 단축권 -1분", w: 41 },
+          { text: "방송 단축권 -10분", w: 5 },
+          { text: "방송 단축권 -20분", w: 3 },
+          { text: "방송 단축권 -30분", w: 1 }
+        ]}
+      };
 
-  $("logoutBtn").onclick = async ()=>{
-    await signOut(auth);
-    location.replace("index.html");
-  };
+      let profile = null;
+      let isAdmin = false;
 
-  /** ✅ 룰렛 목록 */
-  const ROULETTES = {
-    normal: { label: "기본", items: [
-      { text: "냥멍체[3분]", w: 1.7 },
-      { text: "원하는체[3분_5글자]", w: 1.7 },
-      { text: "짧은애교대사[5줄 이하]", w: 0.85 },
-      { text: "팬보드", w: 0.85 },
-      { text: "혀봉인[1분]", w: 1.7 },
-      { text: "받침봉인[1분]", w: 1.7 },
-      { text: "영 어금지[3분]", w: 1.7 },
-      { text: "침뱉기", w: 1.7 },
-      { text: "짧은팬보드[1~2줄]", w: 1.7 },
-      { text: "실드+100", w: 2.3 },
-      { text: "실드-100", w: 2.3 },
-      { text: "ASMR방송[3분]", w: 1.7 },
-      { text: "룰렛 다돌권", w: 3.4 },
-      { text: "헬기 리액[킵x]", w: 1.7 },
-      { text: "ㅇ받침체[2분]", w: 1.7 },
-      { text: "출석체크 리액[킵x]", w: 3.4 },
-      { text: "브라보[킵x]", w: 3.4 },
-      { text: "3인칭[1분]", w: 3.4 },
-      { text: "방종까지 쉴드 0개[킵x]", w: 0.85 },
-      { text: "발박수", w: 3.4 },
-      { text: "방제 변경권[10분/킵 불가]", w: 1.7 },
-      { text: "배경사진 변경권[10분/킵 불가]", w: 1.7 },
-      { text: "연하충애교도리[1분]", w: 0.85 },
-      { text: "봉인추가", w: 1.7 },
-      { text: "봉인제거", w: 1.7 },
-      { text: "이쑤시개 리액션[킵x]", w: 1.7 },
-      { text: "배통통[킵x]", w: 3.4 },
-      { text: "공지변경권[다음 방송까지]", w: 1.7 },
-      { text: "박수 3번[킵x]", w: 3.4 },
-      { text: "투명의자 1분[킵x]", w: 1.7 },
-      { text: "스쿼트 5개[킵x]", w: 1.7 },
-      { text: "벽찍[킵x]", w: 3.4 },
-      { text: "TMI 1개 올리기", w: 1.7 },
-      { text: "이름 3번 불러주기", w: 1.7 },
-      { text: "복권 1개 지급", w: 8 },
-      { text: "복권 10개 지급", w: 6 },
-      { text: "복권 20개 지급", w: 3 },
-      { text: "복권 30개 지급", w: 1.7 },
-      { text: "꽝", w: 12.1 }
-    ]},
-    noble: { label: "귀족", items: [
-      { text: "24시간 닉변권", w: 5 },
-      { text: "24시간 역닉변권", w: 5 },
-      { text: "원하는 녹음본 보내주기[짧은 애교/원하는 대사/리액션]", w: 4 },
-      { text: "단독 박제편지", w: 4 },
-      { text: "룰렛 선택권[기본 or 귀족 중 원하는 것 하나 고르기]", w: 4 },
-      { text: "캐스트 저장권 2회", w: 13 },
-      { text: "실드 2배", w: 5 },
-      { text: "실드펑 2배", w: 5 },
-      { text: "귀족룰렛 할인권(250스푼,3분/본인만 사용 가능)", w: 4 },
-      { text: "귀족룰렛 다돌권", w: 10 },
-      { text: "원하는 이름으로 캐스트 저장권", w: 5 },
-      { text: "원하는 녹음본 캐스트[짧은 애교/원하는 대사/리액션/1일]", w: 4 },
-      { text: "실드 음수로 변경", w: 4 },
-      { text: "실드 양수로 변경", w: 4 },
-      { text: "게임 데이트권[1시간/마이크 사용은 상대방에 따라]", w: 4 },
-      { text: "팬보드 3개 추가", w: 5 },
-      { text: "복권 100장", w: 5 },
-      { text: "복권 1000장", w: 5 },
-      { text: "도리 용돈", w: 5 }
-    ]},
-    time: { label: "시간", items: [
-      { text: "방송 연장권 +1분", w: 41 },
-      { text: "방송 연장권 +10분", w: 5 },
-      { text: "방송 연장권 +20분", w: 3 },
-      { text: "방송 연장권 +30분", w: 1 },
-      { text: "방송 단축권 -1분", w: 41 },
-      { text: "방송 단축권 -10분", w: 5 },
-      { text: "방송 단축권 -20분", w: 3 },
-      { text: "방송 단축권 -30분", w: 1 }
-    ]}
-  };
+      let currentType = "normal";
+      const typeSeg = $("typeSeg");
+      const itemsBox = $("itemsBox");
 
-  let profile = null;
-  let isAdmin = false;
-
-  /** UI 렌더 */
-  let currentType = "normal";
-  const typeSeg = $("typeSeg");
-  const itemsBox = $("itemsBox");
-
-  function renderTypes(){
-    typeSeg.innerHTML = "";
-    Object.keys(ROULETTES).forEach(key=>{
-      const b = document.createElement("button");
-      b.className = "pill" + (key===currentType ? " on" : "");
-      b.textContent = ROULETTES[key].label;
-      b.onclick = ()=>{ currentType = key; renderTypes(); renderItems(); };
-      typeSeg.appendChild(b);
-    });
-  }
-  function renderItems(){
-    const items = ROULETTES[currentType].items || [];
-    itemsBox.innerHTML = "";
-    items.forEach(it=>{
-      const row = document.createElement("div");
-      row.className = "li";
-      row.innerHTML = `<b>${escapeHtml(it.text || "-")}</b><span>${Number(it.w||0)}%</span>`;
-      itemsBox.appendChild(row);
-    });
-  }
-  renderTypes(); renderItems();
-
-  function pickWeighted(items){
-    const cleaned = items
-      .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
-      .filter(x=>x.text.length>0 && x.w>0);
-    const total = cleaned.reduce((a,b)=>a+b.w,0);
-    if(total<=0) return { text:"-" };
-    let r = Math.random()*total;
-    for(const it of cleaned){
-      r -= it.w;
-      if(r<=0) return it;
-    }
-    return cleaned[cleaned.length-1] || { text:"-" };
-  }
-
-  function readSpinCount(){
-    const el = $("spinCount");
-    let n = parseInt(el.value, 10);
-    if(!Number.isFinite(n) || n < 1) n = 1;
-    if(n > 999) n = 999;
-    el.value = String(n);
-    return n;
-  }
-
-  const spinBtn = $("spinBtn");
-  const nickInput = $("targetNick");
-  const hintText = $("hintText");
-
-  async function getTargetNick(){
-    if(!isAdmin) return profile.nickname;
-
-    const v = normNick(nickInput.value);
-    const target = v.length ? v : normNick(profile.nickname);
-
-    const err = validateNickForDocId(target);
-    if(err) throw new Error(err);
-
-    const ok = await nicknameExists(target);
-    if(!ok){
-      throw new Error(`존재하지 않는 닉네임: ${target}`);
-    }
-
-    localStorage.setItem("lastTargetNick", target);
-    return target;
-  }
-
-  async function applyDelta(nickRaw, type, itemText, delta){
-    const nick = normNick(nickRaw);
-    const err = validateNickForDocId(nick);
-    if(err) throw new Error(err);
-
-    const itemId = encodeKey(itemText);
-
-    const nickRef = doc(db, "counts", nick);
-    const typeRef = doc(db, "counts", nick, "types", type);
-    const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
-
-    await setDoc(nickRef, { nick, updatedAt: serverTimestamp() }, { merge: true });
-    await setDoc(typeRef, { type, updatedAt: serverTimestamp() }, { merge: true });
-
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(itemRef);
-      if(!snap.exists()){
-        if(delta <= 0) return;
-        tx.set(itemRef, { itemText, count: delta, updatedAt: serverTimestamp() });
-        return;
+      function renderTypes(){
+        typeSeg.innerHTML = "";
+        Object.keys(ROULETTES).forEach(key=>{
+          const b = document.createElement("button");
+          b.className = "pill" + (key===currentType ? " on" : "");
+          b.textContent = ROULETTES[key].label;
+          b.onclick = ()=>{ currentType = key; renderTypes(); renderItems(); };
+          typeSeg.appendChild(b);
+        });
       }
-      const cur = Number(snap.data().count || 0);
-      const next = Math.max(0, cur + delta);
-      if(next === 0) tx.delete(itemRef);
-      else tx.update(itemRef, { count: next, itemText, updatedAt: serverTimestamp() });
-    });
-  }
+      function renderItems(){
+        const items = ROULETTES[currentType].items || [];
+        itemsBox.innerHTML = "";
+        items.forEach(it=>{
+          const row = document.createElement("div");
+          row.className = "li";
+          row.innerHTML = `<b>${escapeHtml(it.text || "-")}</b><span>${Number(it.w||0)}%</span>`;
+          itemsBox.appendChild(row);
+        });
+      }
+      renderTypes(); renderItems();
 
-  $("grantToNickBtn").onclick = async ()=>{
-    clearGrantMsg();
-    try{
-      if(!isAdmin) return;
-
-      const amount = readGrantAmount();
-      const targetNick = await getTargetNick();
-
-      $("grantToNickBtn").disabled = true;
-      $("grantAllBtn").disabled = true;
-
-      await grantLottoTicketsToNickname(targetNick, amount);
-      showGrantOk(`✅ '${targetNick}' 님에게 티켓 +${amount} 지급 완료`);
-    }catch(e){
-      showGrantErr(e);
-    }finally{
-      $("grantToNickBtn").disabled = false;
-      $("grantAllBtn").disabled = false;
-    }
-  };
-
-  $("grantAllBtn").onclick = async ()=>{
-    clearGrantMsg();
-    try{
-      if(!isAdmin) return;
-
-      const amount = readGrantAmount();
-      if(!confirm(`정말로 전체 유저에게 티켓 ${amount}장씩 지급할까요?`)) return;
-
-      $("grantToNickBtn").disabled = true;
-      $("grantAllBtn").disabled = true;
-
-      const uids = await getAllUidsFromNicknames();
-      if(uids.length === 0) throw new Error("전체 지급 실패: nicknames 컬렉션에 유저가 없습니다.");
-
-      let done = 0;
-      for(const uid of uids){
-        await grantLottoTicketsToUid(uid, amount);
-        done++;
-        if(done % 25 === 0) await new Promise(r=>setTimeout(r, 30));
+      function pickWeighted(items){
+        const cleaned = items
+          .map(x=>({ text: String(x.text||"").trim(), w: Number(x.w||0) }))
+          .filter(x=>x.text.length>0 && x.w>0);
+        const total = cleaned.reduce((a,b)=>a+b.w,0);
+        if(total<=0) return { text:"-" };
+        let r = Math.random()*total;
+        for(const it of cleaned){
+          r -= it.w;
+          if(r<=0) return it;
+        }
+        return cleaned[cleaned.length-1] || { text:"-" };
       }
 
-      showGrantOk(`✅ 전체 지급 완료: ${uids.length}명 × ${amount}장`);
-    }catch(e){
-      showGrantErr(e);
-    }finally{
-      $("grantToNickBtn").disabled = false;
-      $("grantAllBtn").disabled = false;
+      async function getTargetNick(){
+        if(!isAdmin) return profile.nickname;
+
+        const v = normNick(($("targetNick").value || ""));
+        const target = v.length ? v : normNick(profile.nickname);
+
+        const err = validateNickForDocId(target);
+        if(err) throw new Error(err);
+
+        const ok = await nicknameExists(target);
+        if(!ok) throw new Error(`존재하지 않는 닉네임: ${target}`);
+
+        localStorage.setItem("lastTargetNick", target);
+        return target;
+      }
+
+      async function applyDelta(nickRaw, type, itemText, delta){
+        const nick = normNick(nickRaw);
+        const err = validateNickForDocId(nick);
+        if(err) throw new Error(err);
+
+        const itemId = encodeKey(itemText);
+
+        const nickRef = db.collection("counts").doc(nick);
+        const typeRef = nickRef.collection("types").doc(type);
+        const itemRef = typeRef.collection("items").doc(itemId);
+
+        await nickRef.set({ nick, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+        await typeRef.set({ type, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+
+        await db.runTransaction(async (tx)=>{
+          const snap = await tx.get(itemRef);
+          if(!snap.exists){
+            if(delta <= 0) return;
+            tx.set(itemRef, { itemText, count: delta, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            return;
+          }
+          const cur = Number(snap.data().count || 0);
+          const next = Math.max(0, cur + delta);
+          if(next === 0) tx.delete(itemRef);
+          else tx.update(itemRef, { count: next, itemText, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        });
+      }
+
+      // 수동 지급 버튼
+      $("grantToNickBtn").addEventListener("click", async ()=>{
+        clearGrantMsg();
+        try{
+          if(!isAdmin) return;
+          const amount = readGrantAmount();
+          const targetNick = await getTargetNick();
+          $("grantToNickBtn").disabled = true;
+          $("grantAllBtn").disabled = true;
+          await grantLottoTicketsToNickname(targetNick, amount);
+          showGrantOk(`✅ '${targetNick}' 님에게 티켓 +${amount} 지급 완료`);
+        }catch(e){
+          showGrantErr(e);
+        }finally{
+          $("grantToNickBtn").disabled = false;
+          $("grantAllBtn").disabled = false;
+        }
+      });
+
+      $("grantAllBtn").addEventListener("click", async ()=>{
+        clearGrantMsg();
+        try{
+          if(!isAdmin) return;
+          const amount = readGrantAmount();
+          if(!confirm(`정말로 전체 유저에게 티켓 ${amount}장씩 지급할까요?`)) return;
+
+          $("grantToNickBtn").disabled = true;
+          $("grantAllBtn").disabled = true;
+
+          const uids = await getAllUidsFromNicknames();
+          if(uids.length === 0) throw new Error("전체 지급 실패: nicknames 컬렉션에 유저가 없습니다.");
+
+          let done = 0;
+          for(const uid of uids){
+            await grantLottoTicketsToUid(uid, amount);
+            done++;
+            if(done % 25 === 0) await new Promise(r=>setTimeout(r, 30));
+          }
+          showGrantOk(`✅ 전체 지급 완료: ${uids.length}명 × ${amount}장`);
+        }catch(e){
+          showGrantErr(e);
+        }finally{
+          $("grantToNickBtn").disabled = false;
+          $("grantAllBtn").disabled = false;
+        }
+      });
+
+      // 로그인 상태
+      auth.onAuthStateChanged(async (u)=>{
+        if(!u){ location.replace("index.html"); return; }
+
+        profile = await getProfile(u.uid);
+        if(!profile){ location.replace("index.html"); return; }
+
+        profile.nickname = normNick(profile.nickname);
+        const email = String(u.email || "").toLowerCase();
+        isAdmin = ADMIN_EMAILS.includes(email);
+
+        $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
+        $("grantBox").style.display = isAdmin ? "block" : "none";
+
+        const spinBtn = $("spinBtn");
+        const nickInput = $("targetNick");
+        const hintText = $("hintText");
+
+        if(!isAdmin){
+          nickInput.style.display = "none";
+          spinBtn.disabled = true;
+          hintText.textContent = "* 일반 유저는 룰렛을 돌릴 수 없어요. (기록 보기만 가능)";
+        } else {
+          nickInput.style.display = "";
+          spinBtn.disabled = false;
+          const last = localStorage.getItem("lastTargetNick") || "";
+          nickInput.value = last;
+          hintText.textContent = "* (관리자) 기록될 닉네임을 입력하고 돌리면 그 사람 기록으로 저장돼요.";
+        }
+      });
+
+      // 룰렛 실행
+      $("spinBtn").addEventListener("click", async ()=>{
+        const spinBtn = $("spinBtn");
+        try{
+          if(!isAdmin){
+            alert("관리자만 룰렛을 돌릴 수 있어요.");
+            return;
+          }
+
+          const n = readSpinCount();
+          const targetNick = await getTargetNick();
+          spinBtn.disabled = true;
+
+          const pack = ROULETTES[currentType];
+          const tally = new Map();
+          let lastItem = "-";
+          let totalTicketsToGrant = 0;
+
+          for(let i=0;i<n;i++){
+            const picked = pickWeighted(pack.items || []);
+            const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
+            tally.set(itemText, (tally.get(itemText)||0) + 1);
+            lastItem = itemText;
+
+            const amt = parseLottoTicketAmount(itemText);
+            if(amt > 0) totalTicketsToGrant += amt;
+
+            if(i % 200 === 199) await new Promise(r=>setTimeout(r, 0));
+          }
+
+          for(const [itemText, cnt] of tally.entries()){
+            if(isLottoItem(itemText)) continue;
+            await applyDelta(targetNick, currentType, itemText, cnt);
+          }
+
+          if(totalTicketsToGrant > 0){
+            await grantLottoTicketsToNickname(targetNick, totalTicketsToGrant);
+          }
+
+          const extra = totalTicketsToGrant > 0 ? ` · 자동복권 티켓 +${totalTicketsToGrant}` : "";
+          $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 처리${extra})`;
+          $("resultMeta").textContent =
+            `${ROULETTES[currentType].label} · 대상: ${targetNick} · ${new Date().toLocaleString("ko-KR")}`;
+        }catch(e){
+          alert(e?.message || e);
+        }finally{
+          spinBtn.disabled = !isAdmin;
+        }
+      });
+
+    } catch (e) {
+      fatal("스크립트 오류:\n" + (e?.message || e));
     }
-  };
-
-  onAuthStateChanged(auth, async (u)=>{
-    if(!u){ location.replace("index.html"); return; }
-
-    profile = await getProfile(u.uid);
-    if(!profile){ location.replace("index.html"); return; }
-
-    // ✅ 프로필 닉네임도 같은 규칙으로 정규화해서 표시/사용
-    profile.nickname = normNick(profile.nickname);
-
-    const email = String(u.email || "").toLowerCase();
-    isAdmin = ADMIN_EMAILS.includes(email);
-
-    $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
-
-    $("grantBox").style.display = isAdmin ? "block" : "none";
-
-    if(!isAdmin){
-      nickInput.style.display = "none";
-      spinBtn.disabled = true;
-      hintText.textContent = "* 일반 유저는 룰렛을 돌릴 수 없어요. (기록 보기만 가능)";
-    } else {
-      nickInput.style.display = "";
-      spinBtn.disabled = false;
-      const last = localStorage.getItem("lastTargetNick") || "";
-      nickInput.value = last;
-      hintText.textContent = "* (관리자) 기록될 닉네임을 입력하고 돌리면 그 사람 기록으로 저장돼요.";
-    }
-  });
-
-  spinBtn.onclick = async ()=>{
-    try{
-      if(!isAdmin){
-        alert("관리자만 룰렛을 돌릴 수 있어요.");
-        return;
-      }
-
-      const n = readSpinCount();
-      const targetNick = await getTargetNick();
-
-      spinBtn.disabled = true;
-
-      const pack = ROULETTES[currentType];
-      const tally = new Map();
-      let lastItem = "-";
-      let totalTicketsToGrant = 0;
-
-      for(let i=0;i<n;i++){
-        const picked = pickWeighted(pack.items || []);
-        const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
-        tally.set(itemText, (tally.get(itemText)||0) + 1);
-        lastItem = itemText;
-
-        const amt = parseLottoTicketAmount(itemText);
-        if(amt > 0) totalTicketsToGrant += amt;
-
-        if(i % 200 === 199) await new Promise(r=>setTimeout(r, 0));
-      }
-
-      for(const [itemText, cnt] of tally.entries()){
-        if(isLottoItem(itemText)) continue;
-        await applyDelta(targetNick, currentType, itemText, cnt);
-      }
-
-      if(totalTicketsToGrant > 0){
-        await grantLottoTicketsToNickname(targetNick, totalTicketsToGrant);
-      }
-
-      const extra = totalTicketsToGrant > 0 ? ` · 자동복권 티켓 +${totalTicketsToGrant}` : "";
-      $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 처리${extra})`;
-      $("resultMeta").textContent =
-        `${ROULETTES[currentType].label} · 대상: ${targetNick} · ${new Date().toLocaleString("ko-KR")}`;
-
-    }catch(e){
-      alert(e?.message || e);
-    }finally{
-      spinBtn.disabled = !isAdmin;
-    }
-  };
-</script>
+  })();
+  </script>
 </body>
 </html>
