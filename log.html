@@ -141,7 +141,8 @@
 
   const $ = (id)=>document.getElementById(id);
 
-  const ADMIN_EMAILS = ["dori0223@gmail.com"];
+  // ✅ (변경) ADMIN_EMAILS 제거: Rules/DB와 통일하기 위해 role 기반으로만 admin 판단
+  // const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
   function escapeHtml(s){
     return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -207,11 +208,27 @@
     return snap.exists() ? snap.data() : null;
   }
 
+  // ✅ (추가) counts가 비어있으면 users에서 닉네임 목록 fallback (초기화 직후 대비)
+  async function getNickListFallbackFromUsers(){
+    setState("닉네임 목록 불러오는 중…(fallback: users)");
+    const snap = await safeGetDocs(collection(db, "users"), "users getDocs(list)");
+    return snap.docs
+      .map(d => normNick(d.data()?.nickname || ""))
+      .filter(n => !validateNickForDocId(n));
+  }
+
   async function getNickList(isAdmin, myNick){
     if(isAdmin){
       setState("닉네임 목록 불러오는 중…(관리자)");
       const snap = await safeGetDocs(collection(db, "counts"), "counts getDocs(list)");
-      return snap.docs.map(d=>d.id);
+      const ids = snap.docs.map(d=>d.id).map(normNick).filter(n=>!validateNickForDocId(n));
+
+      // ✅ counts가 비어있으면 users에서 nickname 목록으로 대체
+      if(ids.length === 0){
+        const fromUsers = await getNickListFallbackFromUsers();
+        return fromUsers;
+      }
+      return ids;
     }
     return [myNick];
   }
@@ -339,8 +356,8 @@
         return;
       }
 
-      const email = String(u.email || "").toLowerCase();
-      isAdmin = ADMIN_EMAILS.includes(email);
+      // ✅ (변경) admin 판별을 role로 통일 (Rules와 동일)
+      isAdmin = String(profile.role || "").toLowerCase() === "admin";
 
       $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
       $("modeText").textContent =
@@ -581,11 +598,16 @@
 `권한 오류(permission-denied)
 
 Firestore 규칙에서 log.html 읽기가 막혔어요.
-- 관리자: counts 전체 읽기 허용
+- 관리자: counts 전체/하위 읽기 허용
 - 일반유저: counts/{내닉} 아래만 읽기 허용
 
 지금 뜬 오류:
-${code} ${msg}`
+${code} ${msg}
+
+추가 체크:
+1) users/{내UID}.role 이 "admin" 인지
+2) users/{내UID}.nickname 과 counts 문서ID가 완전히 같은지 (공백/특수문자 포함)
+3) rules에 match /counts/{nick}/{document=**} 가 있는지`
         );
       }
 
@@ -598,7 +620,7 @@ ${msg}
 
 가능한 원인:
 1) Firestore 규칙/권한 문제로 요청이 막힘
-2) 네트워크/와이파이/프라이빗 릴레이/차단 앱으로 gstatic 또는 firestore 요청이 지연
+2) 네트워크/와이파이/차단 앱으로 gstatic 또는 firestore 요청이 지연
 3) counts 문서/서브컬렉션이 너무 많아 로딩이 과도
 
 → 위 메시지에 "어떤 단계"에서 멈췄는지 적혀있어요.`
