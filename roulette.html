@@ -110,7 +110,7 @@
 
   const $ = (id)=>document.getElementById(id);
 
-  // ✅ 관리자 이메일로만 admin 판별 (여기에 관리자 이메일 넣기)
+  // ✅ 관리자 이메일로만 admin 판별
   const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
   function escapeHtml(s){
@@ -126,10 +126,60 @@
     return snap.exists() ? snap.data() : null;
   }
 
-  // ✅ users query 금지: nicknames/{닉} 존재 여부로 확인 (권한 안정)
+  // ✅ nicknames/{닉} 존재 여부
   async function nicknameExists(nick){
     const snap = await getDoc(doc(db, "nicknames", String(nick || "").trim()));
     return snap.exists();
+  }
+
+  // ✅ nicknames/{닉} -> uid 가져오기
+  async function getUidByNickname(nick){
+    const key = String(nick || "").trim();
+    const snap = await getDoc(doc(db, "nicknames", key));
+    if(!snap.exists()) return null;
+    const uid = snap.data()?.uid;
+    return uid || null;
+  }
+
+  // ✅ "복권"이 들어간 항목 텍스트에서 지급 장수 파싱
+  // 예: "복권 10개 지급" -> 10
+  //     "복권 100장" -> 100
+  //     "복권" (숫자 없음) -> 1
+  function parseLottoTicketAmount(itemText){
+    const s = String(itemText || "");
+    if(!s.includes("복권")) return 0;
+
+    // 첫 번째 숫자만 가져옴
+    const m = s.match(/(\d+)/);
+    if(!m) return 1;
+
+    const n = parseInt(m[1], 10);
+    if(!Number.isFinite(n) || n <= 0) return 1;
+    return n;
+  }
+
+  // ✅ 관리자 룰렛에서 "복권 포함 항목" 나오면 대상 유저 users/{uid}.lottoTickets 누적 지급
+  async function grantLottoTicketsToNickname(targetNick, ticketsToAdd){
+    ticketsToAdd = Number(ticketsToAdd || 0);
+    if(!Number.isFinite(ticketsToAdd) || ticketsToAdd <= 0) return;
+
+    const uid = await getUidByNickname(targetNick);
+    if(!uid) throw new Error(`닉네임 '${targetNick}'의 uid를 찾을 수 없습니다.`);
+
+    const userRef = doc(db, "users", uid);
+
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(userRef);
+      if(!snap.exists()) throw new Error("해당 유저 users 문서가 없습니다.");
+
+      const cur = Number(snap.data()?.lottoTickets || 0);
+      const next = cur + ticketsToAdd;
+
+      tx.update(userRef, {
+        lottoTickets: next,
+        updatedAt: serverTimestamp()
+      });
+    });
   }
 
   $("logoutBtn").onclick = async ()=>{
@@ -137,7 +187,7 @@
     location.replace("index.html");
   };
 
-  /** ✅ 사용자 제공 최신 룰렛 목록 */
+  /** ✅ 룰렛 목록 */
   const ROULETTES = {
     normal: { label: "기본", items: [
       { text: "냥멍체[3분]", w: 1.7 },
@@ -279,7 +329,7 @@
     const v = String(nickInput.value || "").trim();
     const target = v.length ? v : profile.nickname;
 
-    // ✅ nicknames/{닉} 존재 여부로 검증 (권한 안정)
+    // ✅ nicknames/{닉} 존재 여부로 검증
     if(!(await nicknameExists(target))){
       throw new Error(`존재하지 않는 닉네임: ${target}`);
     }
@@ -288,7 +338,7 @@
     return target;
   }
 
-  // ✅ counts 구조 저장 (부모 문서까지 생성해 log.html에서 목록이 잘 뜨게)
+  // ✅ counts 구조 저장
   async function applyDelta(nick, type, itemText, delta){
     const itemId = encodeKey(itemText);
 
@@ -296,11 +346,9 @@
     const typeRef = doc(db, "counts", nick, "types", type);
     const itemRef = doc(db, "counts", nick, "types", type, "items", itemId);
 
-    // 부모 문서 표시용 생성/갱신(merge)
     await setDoc(nickRef, { nick, updatedAt: serverTimestamp() }, { merge: true });
     await setDoc(typeRef, { type, updatedAt: serverTimestamp() }, { merge: true });
 
-    // 실제 카운트는 트랜잭션
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(itemRef);
       if(!snap.exists()){
@@ -321,7 +369,6 @@
     profile = await getProfile(u.uid);
     if(!profile){ location.replace("index.html"); return; }
 
-    // ✅ 이메일 기반 admin
     const email = String(u.email || "").toLowerCase();
     isAdmin = ADMIN_EMAILS.includes(email);
 
@@ -356,20 +403,35 @@
       const tally = new Map();
       let lastItem = "-";
 
+      // ✅ 복권 티켓 총 지급량 누적
+      let totalTicketsToGrant = 0;
+
       for(let i=0;i<n;i++){
         const picked = pickWeighted(pack.items || []);
         const itemText = (picked.text && picked.text.trim()) ? picked.text.trim() : "-";
         tally.set(itemText, (tally.get(itemText)||0) + 1);
         lastItem = itemText;
 
+        // ✅ "복권" 포함 항목이면 티켓 수량 누적
+        const amt = parseLottoTicketAmount(itemText);
+        if(amt > 0) totalTicketsToGrant += amt;
+
         if(i % 200 === 199) await new Promise(r=>setTimeout(r, 0));
       }
 
+      // counts 저장은 기존 그대로
       for(const [itemText, cnt] of tally.entries()){
         await applyDelta(targetNick, currentType, itemText, cnt);
       }
 
-      $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 저장)`;
+      // ✅ 복권 티켓 지급 (한 번에 몰아서)
+      if(totalTicketsToGrant > 0){
+        await grantLottoTicketsToNickname(targetNick, totalTicketsToGrant);
+      }
+
+      // 결과 표시(티켓 지급도 같이 표시)
+      const extra = totalTicketsToGrant > 0 ? ` · 자동복권 티켓 +${totalTicketsToGrant}` : "";
+      $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 저장${extra})`;
       $("resultMeta").textContent =
         `${ROULETTES[currentType].label} · 대상: ${targetNick} · ${new Date().toLocaleString("ko-KR")}`;
 
