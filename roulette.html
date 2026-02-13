@@ -66,15 +66,19 @@
 <body>
   <div id="fatal" class="fatal"></div>
 
-  <!-- ✅ 상단 공통바(룰렛/기록/복권) + 닉네임/로그아웃 유지 -->
+  <!-- ✅ 상단 공통바(룰렛/기록/복권/유저) + 닉네임/로그아웃/새로고침 -->
   <div class="top">
     <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
     <button class="btn" onclick="location.href='log.html'">📒 기록</button>
     <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
 
+    <!-- ✅ 관리자 전용: 유저 목록 -->
+    <button class="btn" id="usersBtn" style="display:none" onclick="location.href='users.html'">👥 유저</button>
+
     <div style="flex:1"></div>
     <div class="muted" id="who"></div>
     <button class="btn" id="logoutBtn">로그아웃</button>
+    <button class="btn" id="refreshBtn">새로고침</button>
   </div>
 
   <div class="wrap">
@@ -171,6 +175,13 @@
       const db = firebase.firestore();
       const $ = (id)=>document.getElementById(id);
 
+      // ✅ 상단바 버튼
+      $("refreshBtn").addEventListener("click", ()=>location.reload());
+      $("logoutBtn").addEventListener("click", async ()=>{
+        await auth.signOut();
+        location.replace("index.html");
+      });
+
       // 관리자 이메일
       const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
@@ -194,39 +205,6 @@
         if(!nick) return "닉네임을 입력해줘.";
         if(/[\/\\]/.test(nick)) return "닉네임에 / 또는 \\ 는 사용할 수 없어.";
         return "";
-      }
-
-      function showGrantOk(m){
-        const ok = $("grantOk"), er = $("grantErr");
-        er.style.display="none"; er.textContent="";
-        ok.style.display="block"; ok.textContent=m;
-      }
-      function showGrantErr(e){
-        const ok = $("grantOk"), er = $("grantErr");
-        ok.style.display="none"; ok.textContent="";
-        er.style.display="block"; er.textContent="오류: " + (e?.message || e);
-      }
-      function clearGrantMsg(){
-        $("grantOk").style.display="none"; $("grantOk").textContent="";
-        $("grantErr").style.display="none"; $("grantErr").textContent="";
-      }
-
-      function readGrantAmount(){
-        const el = $("grantAmount");
-        let n = parseInt(el.value, 10);
-        if(!Number.isFinite(n) || n < 1) n = 1;
-        if(n > 1000000) n = 1000000;
-        el.value = String(n);
-        return n;
-      }
-
-      function readSpinCount(){
-        const el = $("spinCount");
-        let n = parseInt(el.value, 10);
-        if(!Number.isFinite(n) || n < 1) n = 1;
-        if(n > 999) n = 999;
-        el.value = String(n);
-        return n;
       }
 
       async function getProfile(uid){
@@ -297,10 +275,38 @@
         await grantLottoTicketsToUid(uid, ticketsToAdd);
       }
 
-      $("logoutBtn").addEventListener("click", async ()=>{
-        await auth.signOut();
-        location.replace("index.html");
-      });
+      function showGrantOk(m){
+        const ok = document.getElementById("grantOk"), er = document.getElementById("grantErr");
+        er.style.display="none"; er.textContent="";
+        ok.style.display="block"; ok.textContent=m;
+      }
+      function showGrantErr(e){
+        const ok = document.getElementById("grantOk"), er = document.getElementById("grantErr");
+        ok.style.display="none"; ok.textContent="";
+        er.style.display="block"; er.textContent="오류: " + (e?.message || e);
+      }
+      function clearGrantMsg(){
+        document.getElementById("grantOk").style.display="none"; document.getElementById("grantOk").textContent="";
+        document.getElementById("grantErr").style.display="none"; document.getElementById("grantErr").textContent="";
+      }
+
+      function readGrantAmount(){
+        const el = document.getElementById("grantAmount");
+        let n = parseInt(el.value, 10);
+        if(!Number.isFinite(n) || n < 1) n = 1;
+        if(n > 1000000) n = 1000000;
+        el.value = String(n);
+        return n;
+      }
+
+      function readSpinCount(){
+        const el = document.getElementById("spinCount");
+        let n = parseInt(el.value, 10);
+        if(!Number.isFinite(n) || n < 1) n = 1;
+        if(n > 999) n = 999;
+        el.value = String(n);
+        return n;
+      }
 
       // 룰렛 목록
       const ROULETTES = {
@@ -383,8 +389,8 @@
 
       // UI: 타입 탭
       let currentType = "normal";
-      const typeSeg = $("typeSeg");
-      const itemsBox = $("itemsBox");
+      const typeSeg = document.getElementById("typeSeg");
+      const itemsBox = document.getElementById("itemsBox");
 
       function renderTypes(){
         typeSeg.innerHTML = "";
@@ -425,7 +431,7 @@
       async function getTargetNick(){
         if(!isAdmin) return profile.nickname;
 
-        const v = normNick(($("targetNick").value || ""));
+        const v = normNick((document.getElementById("targetNick").value || ""));
         const target = v.length ? v : normNick(profile.nickname);
 
         const err = validateNickForDocId(target);
@@ -467,33 +473,33 @@
       }
 
       // 수동 지급 버튼
-      $("grantToNickBtn").addEventListener("click", async ()=>{
+      document.getElementById("grantToNickBtn").addEventListener("click", async ()=>{
         clearGrantMsg();
         try{
           if(!isAdmin) return;
           const amount = readGrantAmount();
           const targetNick = await getTargetNick();
-          $("grantToNickBtn").disabled = true;
-          $("grantAllBtn").disabled = true;
+          document.getElementById("grantToNickBtn").disabled = true;
+          document.getElementById("grantAllBtn").disabled = true;
           await grantLottoTicketsToNickname(targetNick, amount);
           showGrantOk(`✅ '${targetNick}' 님에게 티켓 +${amount} 지급 완료`);
         }catch(e){
           showGrantErr(e);
         }finally{
-          $("grantToNickBtn").disabled = false;
-          $("grantAllBtn").disabled = false;
+          document.getElementById("grantToNickBtn").disabled = false;
+          document.getElementById("grantAllBtn").disabled = false;
         }
       });
 
-      $("grantAllBtn").addEventListener("click", async ()=>{
+      document.getElementById("grantAllBtn").addEventListener("click", async ()=>{
         clearGrantMsg();
         try{
           if(!isAdmin) return;
           const amount = readGrantAmount();
           if(!confirm(`정말로 전체 유저에게 티켓 ${amount}장씩 지급할까요?`)) return;
 
-          $("grantToNickBtn").disabled = true;
-          $("grantAllBtn").disabled = true;
+          document.getElementById("grantToNickBtn").disabled = true;
+          document.getElementById("grantAllBtn").disabled = true;
 
           const uids = await getAllUidsFromNicknames();
           if(uids.length === 0) throw new Error("전체 지급 실패: nicknames 컬렉션에 유저가 없습니다.");
@@ -508,8 +514,8 @@
         }catch(e){
           showGrantErr(e);
         }finally{
-          $("grantToNickBtn").disabled = false;
-          $("grantAllBtn").disabled = false;
+          document.getElementById("grantToNickBtn").disabled = false;
+          document.getElementById("grantAllBtn").disabled = false;
         }
       });
 
@@ -521,15 +527,22 @@
         if(!profile){ location.replace("index.html"); return; }
 
         profile.nickname = normNick(profile.nickname);
+
+        // ✅ 관리자 판별: 이메일 기반 유지 + role도 같이 반영(어느쪽이든 admin이면 admin)
         const email = String(u.email || "").toLowerCase();
-        isAdmin = ADMIN_EMAILS.includes(email);
+        const role = String(profile.role || "user").toLowerCase();
+        isAdmin = ADMIN_EMAILS.includes(email) || role === "admin";
 
-        $("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
-        $("grantBox").style.display = isAdmin ? "block" : "none";
+        // ✅ 상단 who + 유저 버튼 표시
+        document.getElementById("who").textContent = `${profile.nickname} · ${isAdmin ? "admin" : "user"}`;
+        const usersBtn = document.getElementById("usersBtn");
+        if(usersBtn) usersBtn.style.display = isAdmin ? "inline-block" : "none";
 
-        const spinBtn = $("spinBtn");
-        const nickInput = $("targetNick");
-        const hintText = $("hintText");
+        document.getElementById("grantBox").style.display = isAdmin ? "block" : "none";
+
+        const spinBtn = document.getElementById("spinBtn");
+        const nickInput = document.getElementById("targetNick");
+        const hintText = document.getElementById("hintText");
 
         if(!isAdmin){
           nickInput.style.display = "none";
@@ -545,8 +558,8 @@
       });
 
       // 룰렛 실행
-      $("spinBtn").addEventListener("click", async ()=>{
-        const spinBtn = $("spinBtn");
+      document.getElementById("spinBtn").addEventListener("click", async ()=>{
+        const spinBtn = document.getElementById("spinBtn");
         try{
           if(!isAdmin){
             alert("관리자만 룰렛을 돌릴 수 있어요.");
@@ -586,8 +599,8 @@
           }
 
           const extra = totalTicketsToGrant > 0 ? ` · 자동복권 티켓 +${totalTicketsToGrant}` : "";
-          $("resultText").textContent = `결과: ${lastItem} (총 ${n}회 처리${extra})`;
-          $("resultMeta").textContent =
+          document.getElementById("resultText").textContent = `결과: ${lastItem} (총 ${n}회 처리${extra})`;
+          document.getElementById("resultMeta").textContent =
             `${ROULETTES[currentType].label} · 대상: ${targetNick} · ${new Date().toLocaleString("ko-KR")}`;
         }catch(e){
           alert(e?.message || e);
