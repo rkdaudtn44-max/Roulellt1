@@ -127,18 +127,25 @@
 <body>
   <div id="fatal" class="fatal"></div>
 
-  <div class="top">
-    <button class="btn" onclick="location.href='roulette.html'">← 룰렛 페이지</button>
-    <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+<div class="top">
+  <!-- ✅ 공통 네비게이션 -->
+  <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
+  <button class="btn" onclick="location.href='log.html'">📒 기록</button>
+  <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
 
-    <button class="btn" id="resetRouletteBtn" style="display:none">🧨 룰렛기록 초기화</button>
-    <button class="btn" id="resetLottoBtn" style="display:none">🧨 복권 전체 초기화</button>
+  <!-- ✅ 관리자 전용 버튼(로그 페이지에서만 표시/작동) -->
+  <button class="btn" id="resetRouletteBtn" style="display:none">🧨 룰렛기록 초기화</button>
+  <button class="btn" id="resetLottoBtn" style="display:none">🧨 복권 전체 초기화</button>
 
-    <div style="flex:1"></div>
-    <div class="muted" id="who"></div>
-    <button class="btn" id="logoutBtn">로그아웃</button>
-    <button class="btn" id="refreshBtn">새로고침</button>
-  </div>
+  <div style="flex:1"></div>
+
+  <!-- ✅ 닉네임/권한 표시 -->
+  <div class="muted" id="who"></div>
+
+  <!-- ✅ 로그아웃/새로고침 -->
+  <button class="btn" id="logoutBtn">로그아웃</button>
+  <button class="btn" id="refreshBtn">새로고침</button>
+</div>
 
   <div class="wrap">
     <div class="card">
