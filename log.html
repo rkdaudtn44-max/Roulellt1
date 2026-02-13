@@ -7,7 +7,13 @@
   <style>
     :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--danger:#ef4444;--pri:#5b7cff;}
     body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
-    .top{position:sticky;top:0;background:rgba(246,247,251,.92);backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;}
+    .top{
+      position:sticky;top:0;background:rgba(246,247,251,.92);
+      backdrop-filter:saturate(180%) blur(10px);
+      border-bottom:1px solid var(--line);
+      padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;
+      flex-wrap:wrap;
+    }
     .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
     .wrap{max-width:900px;margin:0 auto;padding:14px;}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
@@ -85,6 +91,11 @@
   <div class="top">
     <button class="btn" onclick="location.href='roulette.html'">← 룰렛 페이지</button>
     <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+
+    <!-- ✅ 관리자 전용: log.html에서 바로 삭제(초기화) -->
+    <button class="btn" id="resetRouletteBtn" style="display:none">🧨 룰렛기록 초기화</button>
+    <button class="btn" id="resetLottoBtn" style="display:none">🧨 복권 전체 초기화</button>
+
     <div style="flex:1"></div>
     <div class="muted" id="who"></div>
     <button class="btn" id="logoutBtn">로그아웃</button>
@@ -110,7 +121,8 @@
     getFirestore,
     doc, getDoc,
     collection, getDocs,
-    runTransaction
+    runTransaction,
+    query, orderBy, limit, startAfter, writeBatch
   } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
   const fatalEl = document.getElementById("fatal");
@@ -140,9 +152,6 @@
   const db = getFirestore(app);
 
   const $ = (id)=>document.getElementById(id);
-
-  // ✅ (변경) ADMIN_EMAILS 제거: Rules/DB와 통일하기 위해 role 기반으로만 admin 판단
-  // const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
   function escapeHtml(s){
     return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -194,8 +203,8 @@
     return await withTimeout(getDoc(ref), TIMEOUT_MS, label);
   }
 
-  async function safeGetDocs(ref, label){
-    return await withTimeout(getDocs(ref), TIMEOUT_MS, label);
+  async function safeGetDocs(refOrQuery, label){
+    return await withTimeout(getDocs(refOrQuery), TIMEOUT_MS, label);
   }
 
   function setState(msg){
@@ -208,7 +217,7 @@
     return snap.exists() ? snap.data() : null;
   }
 
-  // ✅ (추가) counts가 비어있으면 users에서 닉네임 목록 fallback (초기화 직후 대비)
+  // ✅ counts가 비어있을 때(초기화 직후 등) users에서 닉네임 목록 fallback
   async function getNickListFallbackFromUsers(){
     setState("닉네임 목록 불러오는 중…(fallback: users)");
     const snap = await safeGetDocs(collection(db, "users"), "users getDocs(list)");
@@ -222,11 +231,8 @@
       setState("닉네임 목록 불러오는 중…(관리자)");
       const snap = await safeGetDocs(collection(db, "counts"), "counts getDocs(list)");
       const ids = snap.docs.map(d=>d.id).map(normNick).filter(n=>!validateNickForDocId(n));
-
-      // ✅ counts가 비어있으면 users에서 nickname 목록으로 대체
       if(ids.length === 0){
-        const fromUsers = await getNickListFallbackFromUsers();
-        return fromUsers;
+        return await getNickListFallbackFromUsers();
       }
       return ids;
     }
@@ -312,6 +318,93 @@
     return ["normal","noble","time"];
   }
 
+  /* ===========================
+     ✅ 관리자 초기화(삭제) 기능 - log.html에서 직접 실행
+     - 안전장치: confirm 2단계 (예/아니오)
+     - 배치 제한 대응: pageSize(<=450) 반복 처리
+     - 버튼 2개:
+       1) 룰렛: logs + counts
+       2) 복권: lottoPlays + publicUsers + users(xp/level/lottoTickets 초기화)
+     =========================== */
+  const RESET_PAGE_SIZE = 450;
+
+  function confirmDanger(title, detail){
+    const ok1 = confirm(`${title}\n\n${detail}\n\n진짜 실행할까요? (예/아니오)`);
+    if(!ok1) return false;
+    const ok2 = confirm(`마지막 확인!\n\n${title}\n\n되돌릴 수 없습니다. 계속할까요?`);
+    return ok2;
+  }
+
+  async function deleteCollectionAll(collName, pageSize = RESET_PAGE_SIZE){
+    setState(`[${collName}] 삭제 시작…`);
+    let last = null;
+    let total = 0;
+
+    while(true){
+      const qy = query(
+        collection(db, collName),
+        orderBy("__name__"),
+        limit(pageSize),
+        ...(last ? [startAfter(last)] : [])
+      );
+
+      const snap = await safeGetDocs(qy, `${collName} getDocs(page)`);
+      if(snap.empty) break;
+
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await withTimeout(batch.commit(), TIMEOUT_MS, `${collName} batch.commit`);
+
+      total += snap.size;
+      last = snap.docs[snap.docs.length - 1];
+      setState(`[${collName}] ${total}개 삭제 중…`);
+    }
+
+    setState(`[${collName}] 삭제 완료 ✅ (총 ${total}개)`);
+    return total;
+  }
+
+  async function resetAllUsersXPLevelTickets(pageSize = RESET_PAGE_SIZE){
+    setState(`[users] xp/level/lottoTickets 초기화 시작…`);
+    let last = null;
+    let total = 0;
+
+    while(true){
+      const qy = query(
+        collection(db, "users"),
+        orderBy("__name__"),
+        limit(pageSize),
+        ...(last ? [startAfter(last)] : [])
+      );
+
+      const snap = await safeGetDocs(qy, `users getDocs(page)`);
+      if(snap.empty) break;
+
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => {
+        batch.update(d.ref, { xp: 0, level: 1, lottoTickets: 0 });
+      });
+
+      await withTimeout(batch.commit(), TIMEOUT_MS, `users batch.commit`);
+
+      total += snap.size;
+      last = snap.docs[snap.docs.length - 1];
+      setState(`[users] ${total}명 초기화 중…`);
+    }
+
+    setState(`[users] 초기화 완료 ✅ (총 ${total}명)`);
+    return total;
+  }
+
+  // ✅ 실행 중 중복클릭 방지
+  let resetBusy = false;
+  function setResetButtonsEnabled(enabled){
+    const a = $("resetRouletteBtn");
+    const b = $("resetLottoBtn");
+    if(a) a.disabled = !enabled;
+    if(b) b.disabled = !enabled;
+  }
+
   let profile = null;
   let isAdmin = false;
 
@@ -356,14 +449,108 @@
         return;
       }
 
-      // ✅ (변경) admin 판별을 role로 통일 (Rules와 동일)
+      // ✅ admin 판별을 role로 통일 (Rules와 동일)
       isAdmin = String(profile.role || "").toLowerCase() === "admin";
 
       $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
       $("modeText").textContent =
-        isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능)" : "일반 사용자 모드: 내 카운트만 표시";
+        isAdmin ? "관리자 모드: 전체 카운트 (+/- 가능) · 초기화 버튼 사용 가능" : "일반 사용자 모드: 내 카운트만 표시";
 
       profile.nickname = myNick;
+
+      // ✅ 관리자 전용 버튼(없던 구조였으니 여기서 생성/주입)
+      // (기존 양식 깨지지 않게, top에 버튼이 없으면 자동으로 추가)
+      const top = document.querySelector(".top");
+      if(top){
+        if(!$("resetRouletteBtn")){
+          const btn1 = document.createElement("button");
+          btn1.className = "btn";
+          btn1.id = "resetRouletteBtn";
+          btn1.textContent = "🧨 룰렛기록 초기화";
+          btn1.style.display = "none";
+          top.insertBefore(btn1, top.querySelector("div[style*='flex:1']") || null);
+        }
+        if(!$("resetLottoBtn")){
+          const btn2 = document.createElement("button");
+          btn2.className = "btn";
+          btn2.id = "resetLottoBtn";
+          btn2.textContent = "🧨 복권 전체 초기화";
+          btn2.style.display = "none";
+          top.insertBefore(btn2, top.querySelector("div[style*='flex:1']") || null);
+        }
+      }
+
+      const resetRouletteBtn = $("resetRouletteBtn");
+      const resetLottoBtn = $("resetLottoBtn");
+
+      if(isAdmin){
+        resetRouletteBtn.style.display = "inline-block";
+        resetLottoBtn.style.display = "inline-block";
+
+        resetRouletteBtn.onclick = async ()=>{
+          if(resetBusy) return;
+          try{
+            clearError();
+            const ok = confirmDanger(
+              "룰렛 기록 전체 초기화",
+              "- logs 전체 삭제\n- counts 전체 삭제\n\n(룰렛 기록/카운트가 전부 사라집니다)"
+            );
+            if(!ok) return;
+
+            resetBusy = true;
+            setResetButtonsEnabled(false);
+
+            setState("룰렛 초기화 실행 중…");
+            await deleteCollectionAll("logs");
+            await deleteCollectionAll("counts");
+
+            alert("✅ 룰렛 기록 초기화 완료");
+            await render();
+          }catch(e){
+            setState("룰렛 초기화 실패");
+            showError(e);
+            fatal("룰렛 초기화 오류:\n" + (e?.message || e));
+          }finally{
+            resetBusy = false;
+            setResetButtonsEnabled(true);
+          }
+        };
+
+        resetLottoBtn.onclick = async ()=>{
+          if(resetBusy) return;
+          try{
+            clearError();
+            const ok = confirmDanger(
+              "복권 관련 전체 초기화",
+              "- lottoPlays 전체 삭제\n- publicUsers 전체 삭제(랭킹/캐시)\n- users의 xp/level/lottoTickets 초기화\n\n(복권 기록 + 레벨/경험치/티켓/랭킹 초기화)"
+            );
+            if(!ok) return;
+
+            resetBusy = true;
+            setResetButtonsEnabled(false);
+
+            setState("복권 전체 초기화 실행 중…");
+            await deleteCollectionAll("lottoPlays");
+            await deleteCollectionAll("publicUsers");
+            await resetAllUsersXPLevelTickets();
+
+            alert("✅ 복권 관련 전체 초기화 완료");
+            await render();
+          }catch(e){
+            setState("복권 초기화 실패");
+            showError(e);
+            fatal("복권 전체 초기화 오류:\n" + (e?.message || e));
+          }finally{
+            resetBusy = false;
+            setResetButtonsEnabled(true);
+          }
+        };
+
+      } else {
+        // 일반유저는 버튼 숨김
+        resetRouletteBtn.style.display = "none";
+        resetLottoBtn.style.display = "none";
+      }
 
       await render();
     }catch(e){
