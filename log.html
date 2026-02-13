@@ -704,7 +704,7 @@
                 grandTotal += 1;
                 setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
 
-                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
+                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
               }catch(e){
@@ -736,16 +736,16 @@
 
                 tabCounts[type] = Math.max(0, (tabCounts[type]||0) - 1);
                 const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
-                badgeEl.textContent = \`\${newNickSum}회\`;
+                badgeEl.textContent = `${newNickSum}회`;
 
                 grandTotal = Math.max(0, grandTotal - 1);
-                setState(\`불러오기 완료 ✅ (합산 총 \${grandTotal}회)\`);
+                setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
 
-                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
+                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
                 if(grid.children.length === 0){
-                  grid.innerHTML = \`<div class="itemCard"><div class="muted">항목이 없어요</div></div>\`;
+                  grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
                 }
 
               }catch(e){
