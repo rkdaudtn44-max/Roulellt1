@@ -29,7 +29,26 @@
 
     .accHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;cursor:pointer}
     .accHead b{font-size:16px}
-    .badge{border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-weight:900;color:#2563eb;background:#eef2ff}
+
+    /* ✅ 숫자 폭 고정(tabular nums) 유틸 */
+    .tnum{
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum" 1;
+    }
+
+    /* ✅ 배지 숫자 우측정렬 + 폭 고정 */
+    .badge{
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:6px 10px;
+      font-weight:900;
+      color:#2563eb;
+      background:#eef2ff;
+      display:inline-block;
+      min-width:78px;
+      text-align:right;
+    }
+
     .panel{margin-top:10px;display:none}
     .panel.on{display:block}
 
@@ -43,19 +62,34 @@
 
     .rowsGrid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;background:#fff}
     @media (min-width: 740px){ .rowsGrid{grid-template-columns:1fr 1fr;} }
+
+    /* ✅ itemCard를 grid로: 항목/수량/버튼 줄맞춤 */
     .itemCard{
       border:1px solid var(--line);
       border-radius:14px;
       padding:12px;
       background:#fff;
-      display:flex;
+      display:grid;
+      grid-template-columns: 1fr 88px 112px;
       gap:10px;
       align-items:center;
-      justify-content:space-between;
     }
     .itemLeft b{display:block;font-size:14px}
-    .itemMid{min-width:60px;text-align:center;font-weight:900;font-size:16px}
-    .itemRight{display:flex;gap:8px}
+
+    /* ✅ 수량: tabular-nums + 우측정렬 + 고정폭 */
+    .itemMid{
+      width:88px;
+      justify-self:end;
+      text-align:right;
+      font-weight:900;
+      font-size:16px;
+    }
+
+    .itemRight{
+      justify-self:end;
+      display:flex;
+      gap:8px;
+    }
 
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
     .tab{
@@ -70,6 +104,8 @@
       gap:6px;
     }
     .tab.on{ background:#111827; border-color:#111827; color:#fff; }
+
+    /* ✅ 탭 카운트: tabular + 우측정렬 느낌 */
     .tab .tcount{
       border:1px solid rgba(255,255,255,.25);
       background:rgba(255,255,255,.12);
@@ -77,6 +113,9 @@
       border-radius:999px;
       font-size:12px;
       font-weight:900;
+      min-width:34px;
+      text-align:right;
+      display:inline-block;
     }
     .tab:not(.on) .tcount{
       border-color:var(--line);
@@ -92,7 +131,6 @@
     <button class="btn" onclick="location.href='roulette.html'">← 룰렛 페이지</button>
     <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
 
-    <!-- ✅ 관리자 전용: log.html에서 바로 삭제(초기화) -->
     <button class="btn" id="resetRouletteBtn" style="display:none">🧨 룰렛기록 초기화</button>
     <button class="btn" id="resetLottoBtn" style="display:none">🧨 복권 전체 초기화</button>
 
@@ -183,9 +221,6 @@
     return "";
   }
 
-  /* ===========================
-     ✅ 멈춤(무한 로딩) 방지 핵심: 타임아웃 래퍼
-     =========================== */
   const TIMEOUT_MS = 12000;
 
   function withTimeout(promise, ms, label){
@@ -217,7 +252,6 @@
     return snap.exists() ? snap.data() : null;
   }
 
-  // ✅ counts가 비어있을 때(초기화 직후 등) users에서 닉네임 목록 fallback
   async function getNickListFallbackFromUsers(){
     setState("닉네임 목록 불러오는 중…(fallback: users)");
     const snap = await safeGetDocs(collection(db, "users"), "users getDocs(list)");
@@ -318,14 +352,6 @@
     return ["normal","noble","time"];
   }
 
-  /* ===========================
-     ✅ 관리자 초기화(삭제) 기능 - log.html에서 직접 실행
-     - 안전장치: confirm 2단계 (예/아니오)
-     - 배치 제한 대응: pageSize(<=450) 반복 처리
-     - 버튼 2개:
-       1) 룰렛: logs + counts
-       2) 복권: lottoPlays + publicUsers + users(xp/level/lottoTickets 초기화)
-     =========================== */
   const RESET_PAGE_SIZE = 450;
 
   function confirmDanger(title, detail){
@@ -396,7 +422,6 @@
     return total;
   }
 
-  // ✅ 실행 중 중복클릭 방지
   let resetBusy = false;
   function setResetButtonsEnabled(enabled){
     const a = $("resetRouletteBtn");
@@ -449,7 +474,6 @@
         return;
       }
 
-      // ✅ admin 판별을 role로 통일 (Rules와 동일)
       isAdmin = String(profile.role || "").toLowerCase() === "admin";
 
       $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
@@ -458,8 +482,6 @@
 
       profile.nickname = myNick;
 
-      // ✅ 관리자 전용 버튼(없던 구조였으니 여기서 생성/주입)
-      // (기존 양식 깨지지 않게, top에 버튼이 없으면 자동으로 추가)
       const top = document.querySelector(".top");
       if(top){
         if(!$("resetRouletteBtn")){
@@ -547,7 +569,6 @@
         };
 
       } else {
-        // 일반유저는 버튼 숨김
         resetRouletteBtn.style.display = "none";
         resetLottoBtn.style.display = "none";
       }
@@ -599,7 +620,7 @@
         card.innerHTML = `
           <div class="accHead">
             <b>${escapeHtml(nick)}</b>
-            <span class="badge" data-badge>${nickSum}회</span>
+            <span class="badge tnum" data-badge>${nickSum}회</span>
           </div>
           <div class="panel ${openSet.has(nick) ? "on" : ""}"></div>
         `;
@@ -624,7 +645,7 @@
         headTable.innerHTML = `
           <div class="tr">
             <div>항목 이름</div>
-            <div class="tdRight">수량</div>
+            <div class="tdRight tnum">수량</div>
             <div class="tdRight">(+/-)</div>
           </div>
         `;
@@ -656,7 +677,7 @@
                 <b>${escapeHtml(r.item)}</b>
                 <div class="small">${escapeHtml(safeTypeLabel(type))}</div>
               </div>
-              <div class="itemMid" data-count>${r.v}</div>
+              <div class="itemMid tnum" data-count>${r.v}</div>
               <div class="itemRight">
                 <button class="mini" data-act="minus" ${isAdmin && r.v>0 ? "" : "disabled"}>-</button>
                 <button class="mini" data-act="plus" ${isAdmin ? "" : "disabled"}>+</button>
@@ -752,7 +773,7 @@
           b.className = "tab" + (t===currentTab ? " on" : "");
           b.dataset.type = t;
           b.type = "button";
-          b.innerHTML = `${safeTypeLabel(t)} <span class="tcount">${tabCounts[t]||0}</span>`;
+          b.innerHTML = `${safeTypeLabel(t)} <span class="tcount tnum">${tabCounts[t]||0}</span>`;
 
           b.onclick = (ev)=>{
             ev.preventDefault(); ev.stopPropagation();
