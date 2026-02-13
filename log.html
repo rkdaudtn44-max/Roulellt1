@@ -127,25 +127,28 @@
 <body>
   <div id="fatal" class="fatal"></div>
 
-<div class="top">
-  <!-- ✅ 공통 네비게이션 -->
-  <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
-  <button class="btn" onclick="location.href='log.html'">📒 기록</button>
-  <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+  <div class="top">
+    <!-- ✅ 공통 네비게이션(항상 표시) -->
+    <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
+    <button class="btn" onclick="location.href='log.html'">📒 기록</button>
+    <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
 
-  <!-- ✅ 관리자 전용 버튼(로그 페이지에서만 표시/작동) -->
-  <button class="btn" id="resetRouletteBtn" style="display:none">🧨 룰렛기록 초기화</button>
-  <button class="btn" id="resetLottoBtn" style="display:none">🧨 복권 전체 초기화</button>
+    <!-- ✅ 관리자 전용: 유저 목록(추가) -->
+    <button class="btn" id="usersBtn" style="display:none" onclick="location.href='users.html'">👥 유저</button>
 
-  <div style="flex:1"></div>
+    <!-- ✅ 관리자 전용 버튼(로그 페이지에서만 표시/작동) -->
+    <button class="btn" id="resetRouletteBtn" style="display:none">🧨 룰렛기록 초기화</button>
+    <button class="btn" id="resetLottoBtn" style="display:none">🧨 복권 전체 초기화</button>
 
-  <!-- ✅ 닉네임/권한 표시 -->
-  <div class="muted" id="who"></div>
+    <div style="flex:1"></div>
 
-  <!-- ✅ 로그아웃/새로고침 -->
-  <button class="btn" id="logoutBtn">로그아웃</button>
-  <button class="btn" id="refreshBtn">새로고침</button>
-</div>
+    <!-- ✅ 닉네임/권한 표시 -->
+    <div class="muted" id="who"></div>
+
+    <!-- ✅ 로그아웃/새로고침 -->
+    <button class="btn" id="logoutBtn">로그아웃</button>
+    <button class="btn" id="refreshBtn">새로고침</button>
+  </div>
 
   <div class="wrap">
     <div class="card">
@@ -489,25 +492,9 @@
 
       profile.nickname = myNick;
 
-      const top = document.querySelector(".top");
-      if(top){
-        if(!$("resetRouletteBtn")){
-          const btn1 = document.createElement("button");
-          btn1.className = "btn";
-          btn1.id = "resetRouletteBtn";
-          btn1.textContent = "🧨 룰렛기록 초기화";
-          btn1.style.display = "none";
-          top.insertBefore(btn1, top.querySelector("div[style*='flex:1']") || null);
-        }
-        if(!$("resetLottoBtn")){
-          const btn2 = document.createElement("button");
-          btn2.className = "btn";
-          btn2.id = "resetLottoBtn";
-          btn2.textContent = "🧨 복권 전체 초기화";
-          btn2.style.display = "none";
-          top.insertBefore(btn2, top.querySelector("div[style*='flex:1']") || null);
-        }
-      }
+      // ✅ 관리자 전용: 유저 버튼 표시
+      const usersBtn = $("usersBtn");
+      if(usersBtn) usersBtn.style.display = isAdmin ? "inline-block" : "none";
 
       const resetRouletteBtn = $("resetRouletteBtn");
       const resetLottoBtn = $("resetLottoBtn");
@@ -717,7 +704,7 @@
                 grandTotal += 1;
                 setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
 
-                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
+                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
               }catch(e){
@@ -749,16 +736,16 @@
 
                 tabCounts[type] = Math.max(0, (tabCounts[type]||0) - 1);
                 const newNickSum = (tabCounts.normal||0) + (tabCounts.noble||0) + (tabCounts.time||0);
-                badgeEl.textContent = `${newNickSum}회`;
+                badgeEl.textContent = \`\${newNickSum}회\`;
 
                 grandTotal = Math.max(0, grandTotal - 1);
-                setState(`불러오기 완료 ✅ (합산 총 ${grandTotal}회)`);
+                setState(\`불러오기 완료 ✅ (합산 총 \${grandTotal}회)\`);
 
-                const tabCountSpan = tabs.querySelector(`.tab[data-type="${type}"] .tcount`);
+                const tabCountSpan = tabs.querySelector(\`.tab[data-type="\${type}"] .tcount\`);
                 if(tabCountSpan) tabCountSpan.textContent = String(tabCounts[type]||0);
 
                 if(grid.children.length === 0){
-                  grid.innerHTML = `<div class="itemCard"><div class="muted">항목이 없어요</div></div>`;
+                  grid.innerHTML = \`<div class="itemCard"><div class="muted">항목이 없어요</div></div>\`;
                 }
 
               }catch(e){
