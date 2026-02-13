@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>유저 목록(관리자)</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--danger:#ef4444;}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+
+    /* ✅ 상단 공통바 */
+    .top{
+      position:sticky;top:0;background:rgba(246,247,251,.92);
+      backdrop-filter:saturate(180%) blur(10px);
+      border-bottom:1px solid var(--line);
+      padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:10;
+      flex-wrap:wrap;
+    }
+    .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+
+    .wrap{max-width:980px;margin:0 auto;padding:14px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
+    h2{margin:0 0 10px;font-size:20px}
+    .muted{color:var(--muted);font-size:13px}
+    .danger{color:var(--danger);font-weight:900;font-size:13px;white-space:pre-wrap}
+
+    .fatal{
+      max-width:980px;margin:12px auto 0;padding:12px 14px;
+      background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;
+      color:#9f1239;font-weight:900;display:none;white-space:pre-wrap;font-size:13px;
+    }
+
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+    .search{
+      width:min(360px, 100%);
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:900;
+      background:#fff;
+    }
+
+    /* ✅ 2열 테이블 */
+    .twoCol{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      margin-top:12px;
+    }
+    @media (max-width:900px){
+      .twoCol{ grid-template-columns:1fr; }
+    }
+
+    .table{
+      border:1px solid var(--line);
+      border-radius:14px;
+      overflow:hidden;
+      background:#fff;
+    }
+
+    .tr{
+      display:grid;
+      grid-template-columns: 56px 1fr 90px 120px; /* # / 닉 / 레벨 / 경험치 */
+      gap:10px;
+      padding:10px 12px;
+      border-top:1px solid var(--line);
+      align-items:center;
+      background:#fff;
+    }
+    .tr.head{
+      border-top:none;
+      background:#f9fafb;
+      font-weight:900;
+      color:#111827;
+    }
+    .tdRight{ text-align:right; }
+    .nums{ font-variant-numeric: tabular-nums; }
+
+    .footerRow{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+  </style>
+</head>
+<body>
+  <div id="fatal" class="fatal"></div>
+
+  <div class="top">
+    <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
+    <button class="btn" onclick="location.href='log.html'">📒 기록</button>
+    <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+    <button class="btn pri" onclick="location.href='users.html'">👥 유저</button>
+
+    <div style="flex:1"></div>
+    <div class="muted" id="who"></div>
+    <button class="btn" id="logoutBtn">로그아웃</button>
+    <button class="btn" id="refreshBtn">새로고침</button>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <div>
+          <h2>가입 유저 목록 (관리자 전용)</h2>
+          <div class="muted" id="stateText">불러오는 중…</div>
+        </div>
+        <input id="q" class="search" placeholder="검색: 닉네임" />
+      </div>
+
+      <div style="height:10px"></div>
+      <div id="errBox" class="danger" style="display:none"></div>
+
+      <div class="twoCol">
+        <div class="table" id="leftBox"></div>
+        <div class="table" id="rightBox"></div>
+      </div>
+
+      <div class="footerRow">
+        <div class="muted nums" id="countText">0명</div>
+        <button class="btn" id="moreBtn" disabled>더 불러오기</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import {
+    getFirestore,
+    doc, getDoc,
+    collection, getDocs,
+    query, orderBy, limit, startAfter
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+    authDomain: "roulette-b5455.firebaseapp.com",
+    projectId: "roulette-b5455",
+    storageBucket: "roulette-b5455.firebasestorage.app",
+    messagingSenderId: "728191308035",
+    appId: "1:728191308035:web:b14b46c38bbe0261969936",
+    measurementId: "G-SPY41ZKXYQ"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const $ = (id)=>document.getElementById(id);
+  const fatalEl = $("fatal");
+  function fatal(msg){
+    fatalEl.style.display = "block";
+    fatalEl.textContent = String(msg || "오류");
+  }
+  window.addEventListener("error", (e)=> fatal("JS 오류: " + (e.message || e.error || e)));
+  window.addEventListener("unhandledrejection", (e)=> fatal("Promise 오류: " + (e.reason?.message || e.reason || e)));
+
+  const errBox = $("errBox");
+  function showErr(e){
+    errBox.style.display = "block";
+    const code = e?.code ? `(${e.code}) ` : "";
+    errBox.textContent = "오류: " + code + (e?.message || e);
+  }
+  function clearErr(){ errBox.style.display="none"; errBox.textContent=""; }
+
+  function normNick(v){
+    return String(v ?? "").normalize("NFC").trim().replace(/\s+/g, " ");
+  }
+
+  const TIMEOUT_MS = 12000;
+  function withTimeout(promise, ms, label){
+    return Promise.race([
+      promise,
+      new Promise((_, rej)=>setTimeout(()=>{
+        const err = new Error(`${label} : 응답 지연(타임아웃 ${ms}ms)`);
+        err.code = "timeout";
+        rej(err);
+      }, ms))
+    ]);
+  }
+  async function safeGetDoc(ref, label){ return await withTimeout(getDoc(ref), TIMEOUT_MS, label); }
+  async function safeGetDocs(qy, label){ return await withTimeout(getDocs(qy), TIMEOUT_MS, label); }
+
+  $("refreshBtn").onclick = ()=>location.reload();
+  $("logoutBtn").onclick = async ()=>{
+    await signOut(auth);
+    location.replace("index.html");
+  };
+
+  const stateText = $("stateText");
+  const countText = $("countText");
+  const moreBtn = $("moreBtn");
+  const qEl = $("q");
+  const leftBox = $("leftBox");
+  const rightBox = $("rightBox");
+
+  // rows: { nickname, level, xp }
+  let allRows = [];
+  let filteredRows = [];
+  let lastDoc = null;
+  let loaded = 0;
+  const PAGE_SIZE = 200;
+
+  function renderTable(boxEl, rows, startIndex){
+    boxEl.innerHTML = `
+      <div class="tr head">
+        <div class="nums">#</div>
+        <div>닉네임</div>
+        <div class="tdRight nums">레벨</div>
+        <div class="tdRight nums">경험치</div>
+      </div>
+    `;
+
+    rows.forEach((r, i)=>{
+      const tr = document.createElement("div");
+      tr.className = "tr";
+      tr.innerHTML = `
+        <div class="nums">${startIndex + i}</div>
+        <div>${r.nickname || "-"}</div>
+        <div class="tdRight nums">${Number(r.level ?? 1)}</div>
+        <div class="tdRight nums">${Number(r.xp ?? 0).toLocaleString("ko-KR")}</div>
+      `;
+      boxEl.appendChild(tr);
+    });
+
+    if(rows.length === 0){
+      const empty = document.createElement("div");
+      empty.className = "tr";
+      empty.innerHTML = `<div class="muted" style="grid-column:1 / -1">표시할 유저가 없어요.</div>`;
+      boxEl.appendChild(empty);
+    }
+  }
+
+  function render(){
+    const q = String(qEl.value || "").trim().toLowerCase();
+
+    if(!q){
+      filteredRows = allRows.slice();
+    }else{
+      filteredRows = allRows.filter(r => (r.nickname||"").toLowerCase().includes(q));
+    }
+
+    // ✅ 2열 분배 (왼쪽이 한 줄 더 많게)
+    const n = filteredRows.length;
+    const leftCount = Math.ceil(n / 2);
+    const left = filteredRows.slice(0, leftCount);
+    const right = filteredRows.slice(leftCount);
+
+    renderTable(leftBox, left, 1);
+    renderTable(rightBox, right, leftCount + 1);
+
+    countText.textContent = `${filteredRows.length}명 표시 / ${allRows.length}명 로드됨`;
+  }
+
+  qEl.addEventListener("input", render);
+
+  async function loadNextPage(){
+    clearErr();
+    moreBtn.disabled = true;
+
+    try{
+      stateText.textContent = "유저 목록 불러오는 중…";
+
+      const qy = query(
+        collection(db, "users"),
+        orderBy("nickname"),
+        limit(PAGE_SIZE),
+        ...(lastDoc ? [startAfter(lastDoc)] : [])
+      );
+
+      const snap = await safeGetDocs(qy, "users getDocs(page)");
+      if(snap.empty){
+        stateText.textContent = "불러오기 완료 ✅ (더 없음)";
+        return;
+      }
+
+      snap.docs.forEach(d=>{
+        const u = d.data() || {};
+        allRows.push({
+          nickname: normNick(u.nickname || ""),
+          level: u.level ?? 1,
+          xp: u.xp ?? 0
+        });
+      });
+
+      loaded += snap.size;
+      lastDoc = snap.docs[snap.docs.length - 1];
+
+      stateText.textContent = `불러오는 중… (${loaded}명 로드됨)`;
+      render();
+
+      // 더 남았을 가능성
+      moreBtn.disabled = snap.size < PAGE_SIZE ? true : false;
+      if(moreBtn.disabled) stateText.textContent = "불러오기 완료 ✅";
+
+    }catch(e){
+      stateText.textContent = "불러오기 실패";
+      showErr(e);
+      if(String(e?.code||"") === "timeout"){
+        fatal("응답이 너무 느리거나 권한/네트워크 문제로 막혔어요.\n(타임아웃)\n\n- rules에서 관리자 users read 허용 확인\n- 네트워크 차단 확인");
+      }
+    }
+  }
+
+  moreBtn.onclick = loadNextPage;
+
+  onAuthStateChanged(auth, async (u)=>{
+    if(!u){
+      location.replace("index.html");
+      return;
+    }
+
+    try{
+      clearErr();
+      stateText.textContent = "관리자 확인 중…";
+
+      const snap = await safeGetDoc(doc(db, "users", u.uid), "users/{uid} getDoc(profile)");
+      if(!snap.exists()){
+        showErr({ message: "users/{uid} 프로필 문서가 없습니다. 회원가입 완료 여부 확인해줘." });
+        stateText.textContent = "프로필 없음";
+        return;
+      }
+
+      const profile = snap.data() || {};
+      const myNick = normNick(profile.nickname || "-");
+      const role = String(profile.role || "").toLowerCase();
+      const isAdmin = role === "admin";
+
+      $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
+
+      if(!isAdmin){
+        alert("관리자만 접근 가능한 페이지입니다.");
+        location.replace("log.html");
+        return;
+      }
+
+      // 최초 1페이지 로드
+      await loadNextPage();
+      if(allRows.length >= PAGE_SIZE) moreBtn.disabled = false;
+
+    }catch(e){
+      stateText.textContent = "초기화 실패";
+      showErr(e);
+      fatal("초기화 오류:\n" + (e?.message || e));
+    }
+  });
+</script>
+</body>
+</html>
