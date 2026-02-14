@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>게시판</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;
+      --pri:#5b7cff;--danger:#ef4444;--warn:#f59e0b;--good:#10b981;
+      --shadow:0 10px 24px rgba(17,24,39,.08);
+      --r:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
+    a{color:inherit;text-decoration:none}
+    .top{
+      position:sticky;top:0;z-index:10;
+      background:rgba(246,247,251,.92);
+      backdrop-filter:saturate(180%) blur(10px);
+      border-bottom:1px solid var(--line);
+      padding:10px 12px;
+    }
+    .topin{max-width:1100px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .brand{font-weight:900;letter-spacing:-.02em;margin-right:auto}
+    .nav{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{
+      border:1px solid var(--line);background:#fff;color:var(--text);
+      padding:8px 12px;border-radius:999px;cursor:pointer;
+      display:inline-flex;align-items:center;gap:8px;
+      transition:.15s transform,.15s background,.15s border;
+      user-select:none;
+      font-weight:900;
+    }
+    .btn:hover{transform:translateY(-1px);border-color:#d9dced}
+    .btn.primary{background:var(--pri);border-color:var(--pri);color:#fff}
+    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+    .btn.small{padding:6px 10px;font-size:13px}
+    .pill{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);font-weight:900}
+    .pill.admin{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08);color:#b91c1c}
+    .pill.user{border-color:rgba(91,124,255,.25);background:rgba(91,124,255,.08);color:#1d4ed8}
+
+    .wrap{max-width:1100px;margin:0 auto;padding:16px 12px 44px}
+    .layout{display:grid;grid-template-columns: 1fr 320px;gap:12px;align-items:start;}
+    @media (max-width:980px){.layout{grid-template-columns:1fr}.sidebar{order:-1}}
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .h1{font-size:18px;font-weight:900;margin:0 0 6px;letter-spacing:-.02em}
+    .sub{color:var(--muted);font-size:13px;line-height:1.4;font-weight:800}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .input{
+      border:1px solid var(--line);border-radius:12px;background:#fff;
+      padding:10px 12px;font-size:14px;outline:none;min-width:220px;flex:1;
+    }
+    select.input{min-width:150px;flex:0}
+    textarea.input{min-height:180px;resize:vertical}
+
+    .list{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+    .postItem{
+      border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px;
+      cursor:pointer;transition:.12s transform,.12s border;
+    }
+    .postItem:hover{transform:translateY(-1px);border-color:#d9dced}
+    .postTitle{margin:0 0 6px;font-weight:900;letter-spacing:-.01em}
+    .postMeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:900}
+    .badge{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:3px 7px;border-radius:999px;background:#fff;font-weight:900;}
+    .tag{font-size:12px;border-radius:999px;padding:3px 7px;font-weight:900;border:1px solid rgba(91,124,255,.35);background:rgba(91,124,255,.08);color:#1d4ed8;}
+    .pin{font-size:12px;color:#a16207;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);padding:3px 7px;border-radius:999px;font-weight:900}
+    .lock{font-size:12px;color:#991b1b;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);padding:3px 7px;border-radius:999px;font-weight:900}
+    .preview{
+      margin:8px 0 0;color:#374151;font-size:13px;line-height:1.45;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+      overflow:hidden;font-weight:700;
+    }
+    .empty{border:1px dashed #cfd3e6;border-radius:14px;padding:14px;color:var(--muted);background:rgba(255,255,255,.6);font-weight:900}
+    .divider{height:1px;background:var(--line);margin:12px 0}
+
+    .catHead{display:flex;align-items:center;justify-content:space-between}
+    .catTitle{margin:0;font-size:14px;font-weight:900;letter-spacing:-.01em}
+    .catList{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+    .catBtn{
+      width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+      background:#fff;cursor:pointer;font-weight:900;color:#111827;transition:.12s transform,.12s border;
+    }
+    .catBtn:hover{transform:translateY(-1px);border-color:#d9dced}
+    .catBtn.active{border-color:rgba(91,124,255,.35);background:rgba(91,124,255,.08);color:#1d4ed8}
+    .catName{display:flex;gap:8px;align-items:center;min-width:0}
+    .dot{width:8px;height:8px;border-radius:999px;background:rgba(91,124,255,.55)}
+    .catCount{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:900}
+    .catLabel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+
+    .detailTop{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .detailTitle{margin:10px 0 10px;font-size:20px;font-weight:900;letter-spacing:-.02em}
+    .contentBox{white-space:pre-wrap;line-height:1.6;font-size:14px;border:1px solid var(--line);background:#fff;border-radius:14px;padding:12px;font-weight:700;}
+    .miniLine{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .likeBtn{
+      border:1px solid rgba(91,124,255,.35);background:rgba(91,124,255,.08);
+      color:#1d4ed8;border-radius:999px;padding:7px 10px;font-weight:900;cursor:pointer;
+      display:inline-flex;gap:8px;align-items:center;
+    }
+    .likeBtn.on{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08);color:#b91c1c;}
+    .rightActions{display:flex;gap:8px;flex-wrap:wrap}
+
+    .comments{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+    .cmtItem{border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px 12px;}
+    .cmtText{margin:0 0 6px;font-weight:800}
+    .cmtMeta{color:var(--muted);font-size:12px;font-weight:900}
+    .cmtBar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+    .toast{
+      position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+      background:#111827;color:#fff;padding:10px 12px;border-radius:999px;
+      font-size:13px;display:none;z-index:1000;
+      box-shadow:0 10px 28px rgba(0,0,0,.25);
+      font-weight:900;
+    }
+    .toast.show{display:block}
+
+    .modalBg{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:999;}
+    .modalBg.show{display:flex}
+    .modal{width:min(760px,100%);background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:14px;}
+    .modalHead{display:flex;align-items:center;gap:10px}
+    .modalHead h3{margin:0;font-size:16px;font-weight:900}
+    .modalHead .x{margin-left:auto}
+
+    .adminBox{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.75);padding:12px}
+    .adminGrid{display:grid;grid-template-columns: 1fr;gap:8px;margin-top:10px}
+    .adminItem{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px}
+    .adminItemTop{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .miniBtn{padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;font-weight:900;cursor:pointer}
+    .miniBtn:hover{border-color:#d9dced;transform:translateY(-1px)}
+    .miniBtn.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08);color:#b91c1c}
+    .miniBtn.primary{border-color:rgba(91,124,255,.35);background:rgba(91,124,255,.08);color:#1d4ed8}
+    .help{font-size:12px;color:var(--muted);font-weight:800;line-height:1.35;margin-top:6px}
+  </style>
+</head>
+
+<body>
+  <div class="top">
+    <div class="topin">
+      <div class="brand">게시판</div>
+      <div class="nav">
+        <a class="btn small" href="./roulette.html">룰렛</a>
+        <a class="btn small" href="./log.html">기록</a>
+        <a class="btn small" href="./lottery.html">복권</a>
+        <a class="btn small primary" href="./board.html">게시판</a>
+      </div>
+      <span id="rolePill" class="pill">로그인 확인중…</span>
+      <button id="btnLogout" class="btn small" style="display:none">로그아웃</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="layout">
+
+      <div class="main card">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <div class="h1" id="mainTitle">전체 글</div>
+            <div class="sub" id="mainSub">우측 카테고리에서 이동 → 글 클릭 시 본문 보기</div>
+          </div>
+          <div class="row" style="gap:8px">
+            <button id="btnNew" class="btn primary" disabled>글쓰기</button>
+            <button id="btnBack" class="btn" style="display:none">← 목록</button>
+          </div>
+        </div>
+
+        <div class="controls" id="searchBar">
+          <input id="q" class="input" placeholder="검색 (제목/내용/작성자)" />
+          <select id="sort" class="input">
+            <option value="pinThenNew">고정우선·최신</option>
+            <option value="new">최신순</option>
+            <option value="popular">인기순(좋아요)</option>
+          </select>
+          <button id="btnRefresh" class="btn">새로고침</button>
+        </div>
+
+        <div id="listView">
+          <div id="list" class="list"></div>
+          <div id="listEmpty" class="empty" style="display:none;margin-top:12px">게시글이 없어.</div>
+        </div>
+
+        <div id="detailView" style="display:none">
+          <div class="divider"></div>
+
+          <div class="detailTop">
+            <div class="miniLine">
+              <span id="dCat" class="tag">카테고리</span>
+              <span id="dLock" class="lock" style="display:none">🔒 관리자전용</span>
+              <span id="dPin" class="pin" style="display:none">📌 고정</span>
+              <span id="dMeta" class="badge"></span>
+            </div>
+            <div class="rightActions">
+              <button id="btnLike" class="likeBtn"><span>❤️</span><span id="dLike" class="nums">0</span></button>
+              <span class="badge">👁️ <span id="dView" class="nums">0</span></span>
+              <span class="badge">💬 <span id="dCmtCnt" class="nums">0</span></span>
+              <button id="btnCopy" class="btn small">링크 복사</button>
+              <button id="btnEdit" class="btn small" disabled>수정</button>
+              <button id="btnDelete" class="btn small danger" disabled>삭제</button>
+              <button id="btnPin" class="btn small" disabled>고정</button>
+            </div>
+          </div>
+
+          <h2 id="dTitle" class="detailTitle"></h2>
+          <div id="dContent" class="contentBox"></div>
+
+          <div class="divider"></div>
+
+          <div class="row" style="justify-content:space-between">
+            <div class="h1" style="font-size:15px;margin:0">댓글</div>
+            <span id="commentCount" class="badge nums">0</span>
+          </div>
+
+          <div id="comments" class="comments"></div>
+          <div id="commentsEmpty" class="empty" style="display:none;margin-top:10px">댓글이 없어.</div>
+
+          <div class="cmtBar">
+            <input id="cmt" class="input" placeholder="댓글을 입력해줘 (로그인 필요)" />
+            <button id="btnCmt" class="btn primary" disabled>등록</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar card">
+        <div class="catHead">
+          <h3 class="catTitle">카테고리</h3>
+          <span class="pill" id="whoPill">-</span>
+        </div>
+        <div class="sub" style="margin-top:6px">관리자가 직접 추가/수정/삭제/순서 변경 가능</div>
+
+        <div class="catList" id="catList"></div>
+
+        <div id="adminCatBox" class="adminBox" style="display:none">
+          <div class="row" style="justify-content:space-between">
+            <div style="font-weight:900">카테고리 관리(관리자)</div>
+            <span class="badge">Firestore 저장</span>
+          </div>
+
+          <div class="row" style="margin-top:8px">
+            <input id="newCatName" class="input" style="min-width:0" placeholder="새 카테고리 이름" />
+            <select id="newCatPolicy" class="input" style="min-width:140px;flex:0">
+              <option value="user">전체 글쓰기</option>
+              <option value="admin">관리자 전용</option>
+            </select>
+            <button id="btnAddCat" class="btn primary" style="flex:0">추가</button>
+          </div>
+          <div class="help">
+            - “관리자 전용” 카테고리는 🔒 표시, 글쓰기도 관리자만 가능<br/>
+            - 카테고리 이름 바꾸면 새 글부터 새 이름으로 표시됨(기존 글은 자동 동기화 안 함)
+          </div>
+
+          <div class="adminGrid" id="adminCatList"></div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="sub">권한 규칙</div>
+        <div class="sub" style="margin-top:6px">
+          - 카테고리마다 “전체/관리자전용”을 관리자가 설정<br/>
+          - 글 수정/삭제: 본인 글 또는 관리자<br/>
+          - 좋아요/댓글: 로그인 유저
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalBg" class="modalBg" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHead">
+        <h3 id="modalTitle">글쓰기</h3>
+        <button class="btn small x" id="modalClose">닫기</button>
+      </div>
+
+      <div class="field" style="margin-top:10px">
+        <div class="sub" style="margin-bottom:6px">카테고리</div>
+        <select id="fCat" class="input"></select>
+        <div class="sub" id="fCatHelp" style="margin-top:6px">카테고리별 작성 권한이 적용돼.</div>
+      </div>
+
+      <div class="field">
+        <div class="sub" style="margin-bottom:6px">제목</div>
+        <input id="fTitle" class="input" maxlength="60" placeholder="제목을 입력해줘" />
+      </div>
+
+      <div class="field">
+        <div class="sub" style="margin-bottom:6px">내용</div>
+        <textarea id="fContent" class="input" placeholder="내용을 입력해줘"></textarea>
+      </div>
+
+      <div class="row" style="justify-content:space-between;margin-top:10px">
+        <label class="row" style="gap:8px">
+          <input id="fPin" type="checkbox" />
+          <span style="font-size:13px;font-weight:900">상단 고정(관리자만)</span>
+        </label>
+        <button id="modalSave" class="btn primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+    import {
+      getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs,
+      query, where, orderBy, limit, serverTimestamp, increment, runTransaction
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+    // ✅ 네가 준 firebaseConfig 그대로 적용
+    const firebaseConfig = {
+      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+      authDomain: "roulette-b5455.firebaseapp.com",
+      projectId: "roulette-b5455",
+      storageBucket: "roulette-b5455.firebasestorage.app",
+      messagingSenderId: "728191308035",
+      appId: "1:728191308035:web:b14b46c38bbe0261969936",
+      measurementId: "G-SPY41ZKXYQ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = (s) => document.querySelector(s);
+
+    // ===== 상태 =====
+    let me = { uid:null, nick:"게스트", role:"guest" }; // role: guest/user/admin
+    let currentCatId = "all"; // all or categoryId
+    let viewMode = "list";    // list | detail
+    let selectedPostId = null;
+
+    // 카테고리 캐시
+    let cats = [];               // [{id,name,writePolicy,order,isDeleted}]
+    let catMap = new Map();      // id -> cat
+    let countsCache = new Map(); // catId -> count
+
+    // 중복 조회수 방지(같은 탭)
+    const viewedKey = "boardViewed_v1";
+    const viewed = new Set(JSON.parse(sessionStorage.getItem(viewedKey) || "[]"));
+
+    // ===== 유틸 =====
+    const signedIn = () => !!me.uid;
+    const isAdmin = () => me.role === "admin";
+
+    function toast(msg){
+      const t = $("#toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      clearTimeout(t._t);
+      t._t = setTimeout(()=>t.classList.remove("show"), 1600);
+    }
+
+    function fmtTime(ts){
+      const d = new Date(ts);
+      const yy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,"0");
+      const dd = String(d.getDate()).padStart(2,"0");
+      const hh = String(d.getHours()).padStart(2,"0");
+      const mi = String(d.getMinutes()).padStart(2,"0");
+      return `${yy}-${mm}-${dd} ${hh}:${mi}`;
+    }
+
+    function snippet(s){
+      s = (s||"").trim().replace(/\n+/g," ");
+      return s.length > 130 ? s.slice(0,130)+"…" : s;
+    }
+
+    function canWriteInCat(cat){
+      if (!cat) return false;
+      if (cat.writePolicy === "admin") return isAdmin();
+      return signedIn(); // user
+    }
+
+    function canEditPost(p){
+      if (!p) return false;
+      if (!signedIn()) return false;
+      if (isAdmin()) return true;
+      return p.authorUid === me.uid;
+    }
+
+    // ===== 로그인 유저 정보(users/{uid}에서 role/nickname 읽기) =====
+    async function loadMe(uid, email){
+      let role = "user";
+      let nick = (email ? email.split("@")[0] : "유저");
+      try{
+        const us = await getDoc(doc(db,"users",uid));
+        if (us.exists()){
+          const d = us.data();
+          role = d.role || "user";
+          nick = d.nickname || d.nick || nick;
+        }
+      }catch(e){}
+      me = { uid, role, nick };
+    }
+
+    function setPills(){
+      const rolePill = $("#rolePill");
+      const whoPill = $("#whoPill");
+      const btnLogout = $("#btnLogout");
+
+      rolePill.className = "pill";
+      if (isAdmin()){
+        rolePill.classList.add("admin");
+        rolePill.textContent = `관리자 · ${me.nick}`;
+      } else if (signedIn()){
+        rolePill.classList.add("user");
+        rolePill.textContent = `유저 · ${me.nick}`;
+      } else {
+        rolePill.textContent = "로그인이 필요해";
+      }
+      whoPill.className = rolePill.className;
+      whoPill.textContent = rolePill.textContent;
+      btnLogout.style.display = signedIn() ? "" : "none";
+
+      $("#btnCmt").disabled = !signedIn();
+      $("#cmt").disabled = !signedIn();
+      $("#cmt").placeholder = signedIn() ? "댓글을 입력해줘" : "댓글은 로그인 후 작성 가능";
+
+      $("#adminCatBox").style.display = isAdmin() ? "" : "none";
+    }
+
+    // ===== 카테고리: Firestore에서 로딩 =====
+    async function fetchCategories(){
+      const qq = query(collection(db,"boardCategories"),
+        where("isDeleted","==",false),
+        orderBy("order","asc"),
+        limit(200)
+      );
+      const snap = await getDocs(qq);
+
+      cats = snap.docs.map(d=>{
+        const x = d.data();
+        return {
+          id:d.id,
+          name:x.name || "(이름없음)",
+          writePolicy: x.writePolicy || "user", // user | admin
+          order: x.order ?? 0,
+          isDeleted: !!x.isDeleted
+        };
+      });
+
+      catMap = new Map();
+      for (const c of cats) catMap.set(c.id, c);
+
+      // 최초 카테고리 없으면: 관리자면 기본 3개 자동 생성(안전)
+      if (cats.length === 0 && isAdmin()){
+        await seedDefaultCategories();
+        return await fetchCategories();
+      }
+      return cats;
+    }
+
+    async function seedDefaultCategories(){
+      const base = [
+        {name:"방송공지", writePolicy:"admin", order:10},
+        {name:"DJ게시판", writePolicy:"admin", order:20},
+        {name:"유저게시판", writePolicy:"user",  order:30},
+        {name:"TMI",      writePolicy:"admin", order:40},
+      ];
+      for (const c of base){
+        await addDoc(collection(db,"boardCategories"), {
+          name: c.name,
+          writePolicy: c.writePolicy,
+          order: c.order,
+          isDeleted:false,
+          createdAt: serverTimestamp(),
+          updatedAt: null
+        });
+      }
+    }
+
+    // 카테고리별 글 수 (최근 500개 기준 간이 카운트)
+    async function rebuildCounts(){
+      countsCache = new Map();
+      countsCache.set("all", 0);
+
+      const qq = query(collection(db,"posts"),
+        where("isDeleted","==",false),
+        orderBy("createdAt","desc"),
+        limit(500)
+      );
+      const snap = await getDocs(qq);
+      snap.forEach(d=>{
+        const p = d.data();
+        const cid = p.categoryId || "unknown";
+        countsCache.set("all", (countsCache.get("all")||0) + 1);
+        countsCache.set(cid, (countsCache.get(cid)||0) + 1);
+      });
+    }
+
+    function renderSidebar(){
+      const catList = $("#catList");
+      catList.innerHTML = "";
+
+      // 전체
+      const allBtn = document.createElement("button");
+      allBtn.className = "catBtn" + (currentCatId==="all" ? " active" : "");
+      allBtn.dataset.cat = "all";
+      allBtn.innerHTML = `
+        <span class="catName"><span class="dot"></span><span class="catLabel">전체</span></span>
+        <span class="catCount nums">${countsCache.get("all")||0}</span>
+      `;
+      allBtn.addEventListener("click", async ()=>{
+        currentCatId = "all";
+        viewMode = "list";
+        selectedPostId = null;
+        syncHeader();
+        await render();
+      });
+      catList.appendChild(allBtn);
+
+      // 실제 카테고리
+      for (const c of cats){
+        const btn = document.createElement("button");
+        btn.className = "catBtn" + (c.id===currentCatId ? " active" : "");
+        btn.dataset.cat = c.id;
+        btn.innerHTML = `
+          <span class="catName">
+            <span class="dot"></span>
+            <span class="catLabel">${c.name}</span>
+          </span>
+          <span class="catCount nums">${countsCache.get(c.id)||0}</span>
+        `;
+        btn.addEventListener("click", async ()=>{
+          currentCatId = c.id;
+          viewMode = "list";
+          selectedPostId = null;
+          syncHeader();
+          await render();
+        });
+        catList.appendChild(btn);
+      }
+    }
+
+    function renderAdminCatManager(){
+      if (!isAdmin()) return;
+      const list = $("#adminCatList");
+      list.innerHTML = "";
+
+      const sorted = [...cats].sort((a,b)=> (a.order-b.order) || a.name.localeCompare(b.name,'ko'));
+
+      for (let i=0;i<sorted.length;i++){
+        const c = sorted[i];
+
+        const item = document.createElement("div");
+        item.className = "adminItem";
+        item.innerHTML = `
+          <div class="adminItemTop">
+            <div style="font-weight:900;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span>${c.name}</span>
+              ${c.writePolicy==="admin" ? `<span class="lock">🔒 관리자전용</span>` : `<span class="tag">전체</span>`}
+              <span class="badge">order: <span class="nums">${c.order}</span></span>
+            </div>
+            <div class="row" style="gap:6px">
+              <button class="miniBtn" data-act="up">▲</button>
+              <button class="miniBtn" data-act="down">▼</button>
+              <button class="miniBtn primary" data-act="edit">수정</button>
+              <button class="miniBtn danger" data-act="del">삭제</button>
+            </div>
+          </div>
+        `;
+
+        item.querySelector('[data-act="up"]').addEventListener("click", async ()=>{
+          if (i===0) return toast("이미 맨 위야");
+          await swapCatOrder(sorted[i], sorted[i-1]);
+          toast("순서 변경");
+          await refreshCats();
+        });
+        item.querySelector('[data-act="down"]').addEventListener("click", async ()=>{
+          if (i===sorted.length-1) return toast("이미 맨 아래야");
+          await swapCatOrder(sorted[i], sorted[i+1]);
+          toast("순서 변경");
+          await refreshCats();
+        });
+        item.querySelector('[data-act="edit"]').addEventListener("click", async ()=>{
+          const newName = prompt("카테고리 이름", c.name);
+          if (newName === null) return;
+          const name = newName.trim();
+          if (!name) return toast("이름이 비었어");
+
+          const pol = prompt('권한: "user"(전체 글쓰기) 또는 "admin"(관리자전용)', c.writePolicy);
+          if (pol === null) return;
+          const writePolicy = (pol.trim()==="admin") ? "admin" : "user";
+
+          await updateDoc(doc(db,"boardCategories",c.id), {
+            name,
+            writePolicy,
+            updatedAt: serverTimestamp()
+          });
+          toast("수정 완료");
+          await refreshCats();
+        });
+        item.querySelector('[data-act="del"]').addEventListener("click", async ()=>{
+          if (!confirm(`"${c.name}" 카테고리를 삭제할까?\n(기존 글은 남아있지만, 카테고리 목록에서는 사라져)`)) return;
+          await updateDoc(doc(db,"boardCategories",c.id), { isDeleted:true, updatedAt: serverTimestamp() });
+          if (currentCatId === c.id) currentCatId = "all";
+          toast("삭제 완료");
+          await refreshCats();
+        });
+
+        list.appendChild(item);
+      }
+    }
+
+    async function swapCatOrder(a,b){
+      const aRef = doc(db,"boardCategories",a.id);
+      const bRef = doc(db,"boardCategories",b.id);
+      await runTransaction(db, async (tx)=>{
+        const as = await tx.get(aRef);
+        const bs = await tx.get(bRef);
+        if (!as.exists() || !bs.exists()) return;
+        const ao = as.data().order ?? 0;
+        const bo = bs.data().order ?? 0;
+        tx.update(aRef, { order: bo, updatedAt: serverTimestamp() });
+        tx.update(bRef, { order: ao, updatedAt: serverTimestamp() });
+      });
+    }
+
+    async function refreshCats(){
+      await fetchCategories();
+      await rebuildCounts();
+      renderSidebar();
+      renderAdminCatManager();
+      syncHeader();
+      await render();
+    }
+
+    // ===== 글 목록/본문 =====
+    async function fetchPosts(){
+      const qtxt = ($("#q").value||"").trim().toLowerCase();
+      const sort = $("#sort").value;
+
+      const filters = [ where("isDeleted","==",false) ];
+      if (currentCatId !== "all"){
+        filters.push(where("categoryId","==",currentCatId));
+      }
+
+      const orders = [];
+      if (sort === "popular"){
+        orders.push(orderBy("likeCount","desc"), orderBy("createdAt","desc"));
+      } else if (sort === "pinThenNew"){
+        orders.push(orderBy("pin","desc"), orderBy("createdAt","desc"));
+      } else {
+        orders.push(orderBy("createdAt","desc"));
+      }
+
+      const qq = query(collection(db,"posts"), ...filters, ...orders, limit(50));
+      const snap = await getDocs(qq);
+
+      let arr = snap.docs.map(d=>{
+        const p = d.data();
+        return {
+          id: d.id,
+          ...p,
+          createdAt: p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt,
+          updatedAt: p.updatedAt?.toMillis ? p.updatedAt.toMillis() : p.updatedAt
+        };
+      });
+
+      // 검색은 클라이언트 필터(가볍게)
+      if (qtxt){
+        arr = arr.filter(p =>
+          (p.title||"").toLowerCase().includes(qtxt) ||
+          (p.content||"").toLowerCase().includes(qtxt) ||
+          (p.authorNick||"").toLowerCase().includes(qtxt)
+        );
+      }
+      return arr;
+    }
+
+    async function fetchPost(postId){
+      const snap = await getDoc(doc(db,"posts",postId));
+      if (!snap.exists()) return null;
+      const p = snap.data();
+      return {
+        id:snap.id,
+        ...p,
+        createdAt: p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt,
+        updatedAt: p.updatedAt?.toMillis ? p.updatedAt.toMillis() : p.updatedAt
+      };
+    }
+
+    async function fetchComments(postId){
+      const qq = query(
+        collection(db,"posts",postId,"comments"),
+        where("isDeleted","==",false),
+        orderBy("createdAt","asc"),
+        limit(200)
+      );
+      const snap = await getDocs(qq);
+      return snap.docs.map(d=>{
+        const c = d.data();
+        return {
+          id:d.id,
+          ...c,
+          createdAt: c.createdAt?.toMillis ? c.createdAt.toMillis() : c.createdAt
+        };
+      });
+    }
+
+    async function hasLiked(postId){
+      if (!signedIn()) return false;
+      const s = await getDoc(doc(db,"posts",postId,"likes",me.uid));
+      return s.exists();
+    }
+
+    function currentCatObj(){
+      if (currentCatId==="all") return null;
+      return catMap.get(currentCatId) || null;
+    }
+
+    function syncHeader(){
+      const mainTitle = $("#mainTitle");
+      const mainSub = $("#mainSub");
+      const btnBack = $("#btnBack");
+      const searchBar = $("#searchBar");
+
+      if (viewMode === "list"){
+        const c = currentCatObj();
+        mainTitle.textContent = (currentCatId==="all") ? "전체 글" : (c ? c.name : "카테고리");
+        mainSub.textContent = "우측 카테고리에서 이동하고, 글을 누르면 본문으로 들어가.";
+        btnBack.style.display = "none";
+        searchBar.style.display = "";
+      } else {
+        mainTitle.textContent = "본문 보기";
+        mainSub.textContent = "목록 대신 본문 화면이 나오는 구조야.";
+        btnBack.style.display = "";
+        searchBar.style.display = "none";
+      }
+
+      // 글쓰기 버튼
+      const c = currentCatObj();
+      $("#btnNew").disabled = !(c && canWriteInCat(c));
+    }
+
+    async function renderList(){
+      const listEl = $("#list");
+      const emptyEl = $("#listEmpty");
+      listEl.innerHTML = "";
+
+      const items = await fetchPosts();
+      emptyEl.style.display = items.length ? "none" : "";
+
+      for (const p of items){
+        // 최신 카테고리 이름/권한을 catMap으로 우선 적용
+        const cat = p.categoryId ? catMap.get(p.categoryId) : null;
+        const catName = cat ? cat.name : (p.categoryName || "-");
+        const lock = cat ? (cat.writePolicy==="admin") : !!p.categoryAdminOnly;
+
+        const div = document.createElement("div");
+        div.className = "postItem";
+        div.innerHTML = `
+          <h3 class="postTitle">${p.title || "(제목 없음)"}</h3>
+          <div class="postMeta">
+            <span class="tag">${catName}</span>
+            ${lock ? `<span class="lock">🔒 관리자전용</span>` : ``}
+            ${p.pin ? `<span class="pin">📌 고정</span>` : ``}
+            <span class="badge">작성: ${p.authorNick || "-"}</span>
+            <span class="badge">${p.createdAt ? fmtTime(p.createdAt) : "-"}</span>
+            <span class="badge">❤️ <span class="nums">${p.likeCount||0}</span></span>
+            <span class="badge">👁️ <span class="nums">${p.viewCount||0}</span></span>
+            <span class="badge">💬 <span class="nums">${p.commentCount||0}</span></span>
+          </div>
+          <div class="preview">${snippet(p.content)}</div>
+        `;
+        div.addEventListener("click", () => openPost(p.id));
+        listEl.appendChild(div);
+      }
+    }
+
+    async function renderDetail(p){
+      const cat = p.categoryId ? catMap.get(p.categoryId) : null;
+      const catName = cat ? cat.name : (p.categoryName || "-");
+      const lock = cat ? (cat.writePolicy==="admin") : false;
+
+      $("#dCat").textContent = catName;
+      $("#dLock").style.display = lock ? "" : "none";
+      $("#dPin").style.display = p.pin ? "" : "none";
+      $("#dMeta").textContent = `${p.authorNick||"-"} · ${p.createdAt ? fmtTime(p.createdAt):"-"}${p.updatedAt ? " · 수정 "+fmtTime(p.updatedAt):""}`;
+      $("#dTitle").textContent = p.title || "";
+      $("#dContent").textContent = p.content || "";
+
+      const cmts = await fetchComments(p.id);
+      $("#dLike").textContent = String(p.likeCount||0);
+      $("#dView").textContent = String(p.viewCount||0);
+      $("#dCmtCnt").textContent = String(cmts.length);
+      $("#commentCount").textContent = String(cmts.length);
+
+      $("#btnEdit").disabled = !canEditPost(p);
+      $("#btnDelete").disabled = !canEditPost(p);
+      $("#btnPin").disabled = !isAdmin();
+      $("#btnPin").textContent = p.pin ? "고정해제" : "고정";
+
+      const liked = await hasLiked(p.id);
+      $("#btnLike").className = "likeBtn" + (liked ? " on" : "");
+
+      const commentsEl = $("#comments");
+      const emptyEl = $("#commentsEmpty");
+      commentsEl.innerHTML = "";
+      emptyEl.style.display = cmts.length ? "none" : "";
+
+      for (const c of cmts){
+        const box = document.createElement("div");
+        box.className = "cmtItem";
+        box.innerHTML = `
+          <p class="cmtText">${c.content || ""}</p>
+          <div class="cmtMeta">${c.authorNick || "-"} · ${c.createdAt ? fmtTime(c.createdAt) : "-"}</div>
+        `;
+        commentsEl.appendChild(box);
+      }
+    }
+
+    async function render(){
+      setPills();
+      syncHeader();
+
+      // 카테고리 없으면(게스트도) 사이드 렌더는 가능해야 함
+      if (cats.length === 0){
+        try{
+          await fetchCategories();
+          await rebuildCounts();
+        }catch(e){}
+      }
+      renderSidebar();
+      renderAdminCatManager();
+
+      const listView = $("#listView");
+      const detailView = $("#detailView");
+
+      if (viewMode === "list"){
+        listView.style.display = "";
+        detailView.style.display = "none";
+        await renderList();
+      } else {
+        listView.style.display = "none";
+        detailView.style.display = "";
+        const p = await fetchPost(selectedPostId);
+        if (!p || p.isDeleted){
+          viewMode = "list";
+          selectedPostId = null;
+          syncHeader();
+          await render();
+          return;
+        }
+        await renderDetail(p);
+      }
+    }
+
+    // ===== 액션 =====
+    async function openPost(id){
+      selectedPostId = id;
+      viewMode = "detail";
+      syncHeader();
+
+      // 조회수 +1 (탭 중복 방지)
+      if (!viewed.has(id)){
+        try{
+          await updateDoc(doc(db,"posts",id), { viewCount: increment(1) });
+          viewed.add(id);
+          sessionStorage.setItem(viewedKey, JSON.stringify([...viewed]));
+        }catch(e){}
+      }
+
+      location.hash = `post=${encodeURIComponent(id)}`;
+      await render();
+    }
+
+    async function toggleLike(){
+      if (!signedIn()) return toast("로그인 후 좋아요 가능");
+      const postId = selectedPostId;
+      if (!postId) return;
+
+      const postRef = doc(db,"posts",postId);
+      const likeRef = doc(db,"posts",postId,"likes",me.uid);
+
+      try{
+        await runTransaction(db, async (tx)=>{
+          const likeSnap = await tx.get(likeRef);
+          if (likeSnap.exists()){
+            tx.delete(likeRef);
+            tx.update(postRef, { likeCount: increment(-1) });
+          } else {
+            tx.set(likeRef, { uid: me.uid, createdAt: serverTimestamp() });
+            tx.update(postRef, { likeCount: increment(1) });
+          }
+        });
+        await render();
+      }catch(e){
+        toast("좋아요 처리 실패");
+      }
+    }
+
+    async function addComment(){
+      if (!signedIn()) return toast("로그인 후 댓글 가능");
+      const txt = ($("#cmt").value||"").trim();
+      if (!txt) return toast("댓글을 입력해줘");
+      const postId = selectedPostId;
+
+      try{
+        await addDoc(collection(db,"posts",postId,"comments"), {
+          content: txt,
+          authorUid: me.uid,
+          authorNick: me.nick,
+          isDeleted: false,
+          createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db,"posts",postId), { commentCount: increment(1) });
+        $("#cmt").value = "";
+        toast("댓글 등록!");
+        await render();
+      }catch(e){
+        toast("댓글 등록 실패");
+      }
+    }
+
+    async function softDeletePost(){
+      const p = await fetchPost(selectedPostId);
+      if (!canEditPost(p)) return toast("삭제 권한이 없어");
+      if (!confirm("정말 삭제할까?")) return;
+
+      try{
+        await updateDoc(doc(db,"posts",p.id), { isDeleted:true, updatedAt: serverTimestamp() });
+        toast("삭제 완료");
+        viewMode = "list";
+        selectedPostId = null;
+        location.hash = "";
+        syncHeader();
+        await render();
+      }catch(e){
+        toast("삭제 실패");
+      }
+    }
+
+    async function togglePin(){
+      if (!isAdmin()) return toast("관리자만 고정 가능");
+      const p = await fetchPost(selectedPostId);
+      if (!p) return;
+      try{
+        await updateDoc(doc(db,"posts",p.id), { pin: !p.pin, updatedAt: serverTimestamp() });
+        toast(p.pin ? "고정 해제" : "고정");
+        await render();
+      }catch(e){
+        toast("고정 실패");
+      }
+    }
+
+    // ===== 글쓰기/수정 모달 =====
+    const modalBg = $("#modalBg");
+    const modalClose = $("#modalClose");
+    const modalSave = $("#modalSave");
+    const modalTitle = $("#modalTitle");
+    const fCat = $("#fCat");
+    const fTitle = $("#fTitle");
+    const fContent = $("#fContent");
+    const fPin = $("#fPin");
+    let modalMode = "new"; // new | edit
+
+    function openModal(mode){
+      modalMode = mode;
+      modalTitle.textContent = (mode==="new") ? "글쓰기" : "글 수정";
+      modalBg.classList.add("show");
+      modalBg.setAttribute("aria-hidden","false");
+
+      // 카테고리 옵션(전체 제외)
+      fCat.innerHTML = "";
+      for (const c of cats){
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = `${c.name}${c.writePolicy==="admin" ? " (관리자전용)" : ""}`;
+        fCat.appendChild(opt);
+      }
+
+      // 기본 선택: 현재 카테고리(전체면 첫 카테고리)
+      if (currentCatId !== "all" && catMap.get(currentCatId)){
+        fCat.value = currentCatId;
+      } else if (cats[0]) {
+        fCat.value = cats[0].id;
+      }
+
+      // pin은 관리자만
+      fPin.disabled = !isAdmin();
+      if (!isAdmin()) fPin.checked = false;
+
+      if (mode==="new"){
+        fTitle.value = "";
+        fContent.value = "";
+        fPin.checked = false;
+      } else {
+        fetchPost(selectedPostId).then(p=>{
+          if (!p) return;
+          fCat.value = p.categoryId || (cats[0]?.id || "");
+          fTitle.value = p.title || "";
+          fContent.value = p.content || "";
+          fPin.checked = !!p.pin && isAdmin();
+        });
+      }
+
+      updateCatHelp();
+      fCat.onchange = updateCatHelp;
+    }
+
+    function updateCatHelp(){
+      const c = catMap.get(fCat.value);
+      if (!c) return $("#fCatHelp").textContent = "카테고리를 선택해줘";
+      if (c.writePolicy === "admin"){
+        $("#fCatHelp").textContent = "🔒 관리자전용 카테고리: 관리자만 글쓰기 가능";
+      } else {
+        $("#fCatHelp").textContent = "전체 글쓰기 가능(로그인 필요)";
+      }
+    }
+
+    function closeModal(){
+      modalBg.classList.remove("show");
+      modalBg.setAttribute("aria-hidden","true");
+    }
+    modalClose.addEventListener("click", closeModal);
+    modalBg.addEventListener("click", (e)=>{ if(e.target===modalBg) closeModal(); });
+
+    async function savePost(){
+      const catId = fCat.value;
+      const cat = catMap.get(catId);
+      if (!cat) return toast("카테고리를 선택해줘");
+
+      if (!canWriteInCat(cat)) return toast("이 카테고리는 글쓰기 권한이 없어");
+
+      const title = (fTitle.value||"").trim();
+      const content = (fContent.value||"").trim();
+      if (!title) return toast("제목을 입력해줘");
+      if (!content) return toast("내용을 입력해줘");
+
+      try{
+        const pin = isAdmin() ? !!fPin.checked : false;
+
+        if (modalMode === "new"){
+          const ref = await addDoc(collection(db,"posts"), {
+            categoryId: cat.id,
+            categoryName: cat.name,           // 스냅샷(없어도 되지만 표시 안정용)
+            categoryAdminOnly: cat.writePolicy==="admin",
+            pin,
+            title,
+            content,
+            authorUid: me.uid,
+            authorNick: me.nick,
+            isDeleted: false,
+            likeCount: 0,
+            viewCount: 0,
+            commentCount: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: null
+          });
+          closeModal();
+          toast("작성 완료!");
+          await rebuildCounts();
+          await openPost(ref.id);
+        } else {
+          const p = await fetchPost(selectedPostId);
+          if (!canEditPost(p)) return toast("수정 권한이 없어");
+
+          await updateDoc(doc(db,"posts",p.id), {
+            categoryId: cat.id,
+            categoryName: cat.name,
+            categoryAdminOnly: cat.writePolicy==="admin",
+            pin,
+            title,
+            content,
+            updatedAt: serverTimestamp()
+          });
+          closeModal();
+          toast("수정 완료!");
+          await rebuildCounts();
+          await render();
+        }
+      }catch(e){
+        toast("저장 실패");
+      }
+    }
+
+    // ===== 카테고리 추가(관리자) =====
+    $("#btnAddCat").addEventListener("click", async ()=>{
+      if (!isAdmin()) return toast("관리자만 가능");
+      const name = ($("#newCatName").value||"").trim();
+      const writePolicy = ($("#newCatPolicy").value||"user") === "admin" ? "admin" : "user";
+      if (!name) return toast("카테고리 이름을 입력해줘");
+
+      // order = max + 10
+      const maxOrder = cats.reduce((m,c)=>Math.max(m, c.order ?? 0), 0);
+      try{
+        await addDoc(collection(db,"boardCategories"), {
+          name,
+          writePolicy,
+          order: maxOrder + 10,
+          isDeleted:false,
+          createdAt: serverTimestamp(),
+          updatedAt: null
+        });
+        $("#newCatName").value = "";
+        toast("카테고리 추가됨");
+        await refreshCats();
+      }catch(e){
+        toast("카테고리 추가 실패");
+      }
+    });
+
+    // ===== 이벤트 =====
+    $("#btnRefresh").addEventListener("click", async () => { await refreshCats(); });
+    $("#q").addEventListener("input", async () => { if(viewMode==="list") await renderList(); });
+    $("#sort").addEventListener("change", async () => { await render(); });
+
+    $("#btnBack").addEventListener("click", async ()=>{
+      viewMode = "list";
+      selectedPostId = null;
+      location.hash = "";
+      syncHeader();
+      await render();
+    });
+
+    $("#btnLike").addEventListener("click", toggleLike);
+    $("#btnCmt").addEventListener("click", addComment);
+    $("#btnDelete").addEventListener("click", softDeletePost);
+    $("#btnPin").addEventListener("click", togglePin);
+
+    $("#btnCopy").addEventListener("click", async ()=>{
+      const link = location.origin + location.pathname + `#post=${encodeURIComponent(selectedPostId||"")}`;
+      try{ await navigator.clipboard.writeText(link); toast("링크 복사 완료"); }
+      catch(e){ toast("복사 실패(브라우저 권한)"); }
+    });
+
+    $("#btnLogout").addEventListener("click", async ()=>{
+      try{ await signOut(auth); toast("로그아웃"); }
+      catch(e){ toast("로그아웃 실패"); }
+    });
+
+    $("#btnNew").addEventListener("click", ()=>{
+      const c = currentCatObj();
+      if (!c) return toast("카테고리를 먼저 선택해줘");
+      if (!canWriteInCat(c)) return toast("이 카테고리는 글쓰기 권한이 없어");
+      openModal("new");
+    });
+
+    $("#btnEdit").addEventListener("click", async ()=>{
+      const p = await fetchPost(selectedPostId);
+      if (!canEditPost(p)) return toast("수정 권한이 없어");
+      openModal("edit");
+    });
+
+    modalSave.addEventListener("click", savePost);
+
+    // ===== 해시 라우팅 =====
+    async function applyHash(){
+      const h = (location.hash||"").replace(/^#/,"");
+      if (!h) return;
+      const [k,v] = h.split("=");
+      if (k === "post" && v){
+        const id = decodeURIComponent(v);
+        const p = await fetchPost(id);
+        if (p && !p.isDeleted){
+          selectedPostId = id;
+          viewMode = "detail";
+          currentCatId = p.categoryId || "all";
+          syncHeader();
+        }
+      }
+    }
+    window.addEventListener("hashchange", async ()=>{ await applyHash(); await render(); });
+
+    // ===== 초기 + 로그인 감지 =====
+    onAuthStateChanged(auth, async (u)=>{
+      if (!u){
+        me = { uid:null, nick:"게스트", role:"guest" };
+        setPills();
+        // 로그인 필요 정책: 목록/읽기는 로그인 필요면 rules에서 막힘. UI는 그냥 보여주되 데이터는 안 뜰 수 있음.
+        try{
+          await fetchCategories();
+          await rebuildCounts();
+        }catch(e){}
+        syncHeader();
+        await applyHash();
+        await render();
+        return;
+      }
+
+      await loadMe(u.uid, u.email || null);
+      setPills();
+
+      await fetchCategories();
+      await rebuildCounts();
+
+      // 카테고리가 삭제되었는데 선택돼 있으면 all로
+      if (currentCatId !== "all" && !catMap.get(currentCatId)){
+        currentCatId = "all";
+      }
+
+      syncHeader();
+      await applyHash();
+      await render();
+    });
+  </script>
+</body>
+</html>
