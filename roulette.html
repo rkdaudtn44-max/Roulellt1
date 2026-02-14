@@ -66,11 +66,15 @@
 <body>
   <div id="fatal" class="fatal"></div>
 
-  <!-- ✅ 상단 공통바(룰렛/기록/복권/유저) + 닉네임/로그아웃/새로고침 -->
+  <!-- ✅ 상단 공통바(룰렛/기록/복권/게시판/유저) + 닉네임/로그아웃/새로고침 -->
   <div class="top">
-    <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
+    <!-- ✅ 현재 페이지(룰렛)만 pri -->
+    <button class="btn pri" onclick="location.href='roulette.html'">🎯 룰렛</button>
     <button class="btn" onclick="location.href='log.html'">📒 기록</button>
     <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+
+    <!-- ✅ 추가: 게시판 -->
+    <button class="btn" onclick="location.href='board.html'">📝 게시판</button>
 
     <!-- ✅ 관리자 전용: 유저 목록 -->
     <button class="btn" id="usersBtn" style="display:none" onclick="location.href='users.html'">👥 유저</button>
