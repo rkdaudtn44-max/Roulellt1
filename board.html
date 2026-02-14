@@ -280,7 +280,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs,
+      getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs, setDoc,
       query, orderBy, limit, serverTimestamp, runTransaction
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
@@ -300,18 +300,16 @@
 
     const $ = (s) => document.querySelector(s);
 
-    // ✅ 이메일 관리자도 UI에서 admin으로 취급(bootstrap)
     const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
-    // ===== 고정 카테고리(3개) =====
+    // ✅ 고정 카테고리(3개) - 문서 ID까지 고정!
     const FIXED_CATS = [
-      { name:"방송공지", writePolicy:"admin", order:10 },
-      { name:"DJ게시판", writePolicy:"admin", order:20 },
-      { name:"유저게시판", writePolicy:"user",  order:30 },
+      { id:"notice", name:"방송공지", writePolicy:"admin", order:10 },
+      { id:"dj",     name:"DJ게시판", writePolicy:"admin", order:20 },
+      { id:"user",   name:"유저게시판", writePolicy:"user",  order:30 },
     ];
 
-    // ===== 상태 =====
-    let me = { uid:null, nick:"게스트", role:"guest", email:"" }; // role: guest/user/admin
+    let me = { uid:null, nick:"게스트", role:"guest", email:"" };
     let currentCatId = "all";
     let viewMode = "list";
     let selectedPostId = null;
@@ -323,7 +321,6 @@
     const viewedKey = "boardViewed_v1";
     const viewed = new Set(JSON.parse(sessionStorage.getItem(viewedKey) || "[]"));
 
-    // ===== 유틸 =====
     const signedIn = () => !!me.uid;
     const isAdmin = () => {
       const email = String(me.email || "").toLowerCase();
@@ -373,7 +370,6 @@
       return p.authorUid === me.uid;
     }
 
-    // ===== 로그인 유저 정보(users/{uid}) =====
     async function loadMe(uid, email){
       let role = "user";
       let nick = (email ? email.split("@")[0] : "유저");
@@ -413,9 +409,52 @@
       $("#cmt").placeholder = signedIn() ? "댓글을 입력해줘" : "댓글은 로그인 후 작성 가능";
     }
 
-    // ===== 카테고리 =====
+    // ✅ 관리자 접속 시: 카테고리 3개를 '고정 ID'로 강제 + 나머지 숨김
+    async function ensureFixedCategories(){
+      if (!isAdmin()) return;
+
+      // 1) 고정 3개 upsert
+      for (const c of FIXED_CATS){
+        const ref = doc(db, "boardCategories", c.id);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()){
+          await setDoc(ref, {
+            name: c.name,
+            writePolicy: c.writePolicy,
+            order: c.order,
+            isDeleted: false,
+            createdAt: serverTimestamp(),
+            updatedAt: null
+          });
+        } else {
+          await updateDoc(ref, {
+            name: c.name,
+            writePolicy: c.writePolicy,
+            order: c.order,
+            isDeleted: false,
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+
+      // 2) 나머지 카테고리들은 숨김 처리
+      const keep = new Set(FIXED_CATS.map(x=>x.id));
+      const snapAll = await getDocs(query(collection(db,"boardCategories"), limit(200)));
+      for (const d of snapAll.docs){
+        if (!keep.has(d.id)){
+          const data = d.data() || {};
+          if (data.isDeleted !== true){
+            await updateDoc(doc(db,"boardCategories", d.id), {
+              isDeleted: true,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+      }
+    }
+
     async function fetchCategories(){
-      // 🔥 복합 인덱스 문제 줄이기: where 없이 orderBy만
       const qq = query(collection(db,"boardCategories"), orderBy("order","asc"), limit(50));
       const snap = await getDocs(qq);
 
@@ -430,35 +469,20 @@
         };
       }).filter(c => !c.isDeleted);
 
+      // ✅ 화면에 보이는 것도 3개로 고정
+      const allowed = new Set(FIXED_CATS.map(x=>x.id));
+      cats = cats.filter(c => allowed.has(c.id));
+
       catMap = new Map();
       for (const c of cats) catMap.set(c.id, c);
 
-      // 최초 1회: 관리자 접속 시 3개 카테고리 자동 생성
-      if (cats.length === 0 && isAdmin()){
-        await seedFixedCategories();
-        return await fetchCategories();
-      }
       return cats;
-    }
-
-    async function seedFixedCategories(){
-      for (const c of FIXED_CATS){
-        await addDoc(collection(db,"boardCategories"), {
-          name: c.name,
-          writePolicy: c.writePolicy,
-          order: c.order,
-          isDeleted:false,
-          createdAt: serverTimestamp(),
-          updatedAt: null
-        });
-      }
     }
 
     async function rebuildCounts(){
       countsCache = new Map();
       countsCache.set("all", 0);
 
-      // 🔥 인덱스 꼬임 방지: createdAt 단일 orderBy만 사용
       const qq = query(collection(db,"posts"), orderBy("createdAt","desc"), limit(800));
       const snap = await getDocs(qq);
 
@@ -516,7 +540,7 @@
         const box = document.createElement("div");
         box.className = "empty";
         box.style.marginTop = "10px";
-        box.textContent = "카테고리가 아직 준비되지 않았어. (관리자가 게시판에 1번 접속하면 자동 생성돼)";
+        box.textContent = "카테고리가 없어. 관리자 계정으로 1번 접속하면 자동으로 3개가 만들어져.";
         catList.appendChild(box);
       }
     }
@@ -529,12 +553,10 @@
       await render();
     }
 
-    // ===== 글 목록/본문 =====
     async function fetchPosts(){
       const qtxt = ($("#q").value||"").trim().toLowerCase();
       const sort = $("#sort").value;
 
-      // 🔥 인덱스 꼬임 방지: createdAt 단일 orderBy만
       const qq = query(collection(db,"posts"), orderBy("createdAt","desc"), limit(200));
       const snap = await getDocs(qq);
 
@@ -548,7 +570,6 @@
         };
       });
 
-      // local filter
       arr = arr.filter(p => !p.isDeleted);
 
       if (currentCatId !== "all"){
@@ -563,7 +584,6 @@
         );
       }
 
-      // local sort
       if (sort === "popular"){
         arr.sort((a,b)=> (Number(b.likeCount||0) - Number(a.likeCount||0)) || (Number(b.createdAt||0)-Number(a.createdAt||0)));
       } else if (sort === "pinThenNew"){
@@ -588,7 +608,6 @@
     }
 
     async function fetchComments(postId){
-      // 🔥 인덱스 꼬임 방지: where 없이 정렬만 → 삭제는 local filter
       const qq = query(collection(db,"posts",postId,"comments"), orderBy("createdAt","asc"), limit(200));
       const snap = await getDocs(qq);
       return snap.docs.map(d=>{
@@ -738,13 +757,11 @@
       }
     }
 
-    // ===== 액션 =====
     async function openPost(id){
       selectedPostId = id;
       viewMode = "detail";
       syncHeader();
 
-      // ✅ 조회수: increment() 금지 → 트랜잭션으로 +1 (rules 통과)
       if (!viewed.has(id)){
         try{
           const postRef = doc(db,"posts",id);
@@ -861,7 +878,6 @@
       }
     }
 
-    // ===== 글쓰기/수정 모달 =====
     const modalBg = $("#modalBg");
     const modalClose = $("#modalClose");
     const modalSave = $("#modalSave");
@@ -934,7 +950,6 @@
       const catId = fCat.value;
       const cat = catMap.get(catId);
       if (!cat) return toast("카테고리를 선택해줘");
-
       if (!canWriteInCat(cat)) return toast("이 카테고리는 글쓰기 권한이 없어");
 
       const title = (fTitle.value||"").trim();
@@ -999,7 +1014,6 @@
       }
     }
 
-    // ===== 이벤트 =====
     $("#btnRefresh").addEventListener("click", async () => { await refreshAll(); });
     $("#q").addEventListener("input", async () => { if(viewMode==="list") await renderList(); });
     $("#sort").addEventListener("change", async () => { await render(); });
@@ -1043,7 +1057,6 @@
 
     modalSave.addEventListener("click", savePost);
 
-    // ===== 해시 라우팅 =====
     async function applyHash(){
       const h = (location.hash||"").replace(/^#/,"");
       if (!h) return;
@@ -1061,9 +1074,7 @@
     }
     window.addEventListener("hashchange", async ()=>{ await applyHash(); await render(); });
 
-    // ===== 초기 + 로그인 감지 =====
     onAuthStateChanged(auth, async (u)=>{
-      // ✅ 로그인 안 되어 있으면 로그인 페이지로 보냄 (카테고리/글 read도 rules상 로그인 필요)
       if (!u){
         location.href = "./index.html";
         return;
@@ -1073,6 +1084,9 @@
       setPills();
 
       try{
+        // ✅ 여기서 “카테고리 3개 고정 + 나머지 숨김”이 실행됨
+        await ensureFixedCategories();
+
         await fetchCategories();
         await rebuildCounts();
       }catch(e){
