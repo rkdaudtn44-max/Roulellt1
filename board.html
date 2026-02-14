@@ -156,7 +156,7 @@
         <div class="row" style="justify-content:space-between">
           <div>
             <div class="h1" id="mainTitle">전체 글</div>
-            <div class="sub" id="mainSub">우측 카테고리에서 이동 → 글 클릭 시 본문 보기</div>
+            <div class="sub" id="mainSub">카테고리 선택 → 글 클릭 시 본문 보기</div>
           </div>
           <div class="row" style="gap:8px">
             <button id="btnNew" class="btn primary" disabled>글쓰기</button>
@@ -225,9 +225,7 @@
           <h3 class="catTitle">카테고리</h3>
           <span class="pill" id="whoPill">-</span>
         </div>
-        <div class="sub" style="margin-top:6px">
-          카테고리는 3개로 고정(방송공지 / DJ게시판 / 유저게시판)
-        </div>
+        <div class="sub" style="margin-top:6px">카테고리는 3개로 고정(방송공지 / DJ게시판 / 유저게시판)</div>
 
         <div class="catList" id="catList"></div>
 
@@ -283,11 +281,11 @@
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
     import {
       getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs,
-      query, where, orderBy, limit, serverTimestamp, runTransaction
+      query, orderBy, limit, serverTimestamp, runTransaction
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
     const firebaseConfig = {
-      apiKey: "AIzaSyCgVETp2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
       projectId: "roulette-b5455",
       storageBucket: "roulette-b5455.firebasestorage.app",
@@ -304,6 +302,13 @@
 
     // ✅ 이메일 관리자도 UI에서 admin으로 취급(bootstrap)
     const ADMIN_EMAILS = ["dori0223@gmail.com"];
+
+    // ===== 고정 카테고리(3개) =====
+    const FIXED_CATS = [
+      { name:"방송공지", writePolicy:"admin", order:10 },
+      { name:"DJ게시판", writePolicy:"admin", order:20 },
+      { name:"유저게시판", writePolicy:"user",  order:30 },
+    ];
 
     // ===== 상태 =====
     let me = { uid:null, nick:"게스트", role:"guest", email:"" }; // role: guest/user/admin
@@ -368,10 +373,6 @@
       return p.authorUid === me.uid;
     }
 
-    function firstWritableCat(){
-      return cats.find(c => canWriteInCat(c)) || null;
-    }
-
     // ===== 로그인 유저 정보(users/{uid}) =====
     async function loadMe(uid, email){
       let role = "user";
@@ -414,12 +415,8 @@
 
     // ===== 카테고리 =====
     async function fetchCategories(){
-      const qq = query(
-        collection(db,"boardCategories"),
-        where("isDeleted","==",false),
-        orderBy("order","asc"),
-        limit(50)
-      );
+      // 🔥 복합 인덱스 문제 줄이기: where 없이 orderBy만
+      const qq = query(collection(db,"boardCategories"), orderBy("order","asc"), limit(50));
       const snap = await getDocs(qq);
 
       cats = snap.docs.map(d=>{
@@ -431,30 +428,21 @@
           order: x.order ?? 0,
           isDeleted: !!x.isDeleted
         };
-      });
+      }).filter(c => !c.isDeleted);
 
       catMap = new Map();
       for (const c of cats) catMap.set(c.id, c);
 
-      // ✅ 카테고리 없으면: 관리자만 시드 생성
-      if (cats.length === 0){
-        if (isAdmin()){
-          await seedDefaultCategories();
-          return await fetchCategories();
-        } else {
-          toast("카테고리가 없어. 관리자 로그인 후 자동으로 생성돼.");
-        }
+      // 최초 1회: 관리자 접속 시 3개 카테고리 자동 생성
+      if (cats.length === 0 && isAdmin()){
+        await seedFixedCategories();
+        return await fetchCategories();
       }
       return cats;
     }
 
-    async function seedDefaultCategories(){
-      const base = [
-        {name:"방송공지", writePolicy:"admin", order:10},
-        {name:"DJ게시판", writePolicy:"admin", order:20},
-        {name:"유저게시판", writePolicy:"user",  order:30},
-      ];
-      for (const c of base){
+    async function seedFixedCategories(){
+      for (const c of FIXED_CATS){
         await addDoc(collection(db,"boardCategories"), {
           name: c.name,
           writePolicy: c.writePolicy,
@@ -470,15 +458,13 @@
       countsCache = new Map();
       countsCache.set("all", 0);
 
-      const qq = query(
-        collection(db,"posts"),
-        where("isDeleted","==",false),
-        orderBy("createdAt","desc"),
-        limit(500)
-      );
+      // 🔥 인덱스 꼬임 방지: createdAt 단일 orderBy만 사용
+      const qq = query(collection(db,"posts"), orderBy("createdAt","desc"), limit(800));
       const snap = await getDocs(qq);
+
       snap.forEach(d=>{
         const p = d.data();
+        if (p.isDeleted) return;
         const cid = p.categoryId || "unknown";
         countsCache.set("all", (countsCache.get("all")||0) + 1);
         countsCache.set(cid, (countsCache.get(cid)||0) + 1);
@@ -525,9 +511,17 @@
         });
         catList.appendChild(btn);
       }
+
+      if (cats.length === 0){
+        const box = document.createElement("div");
+        box.className = "empty";
+        box.style.marginTop = "10px";
+        box.textContent = "카테고리가 아직 준비되지 않았어. (관리자가 게시판에 1번 접속하면 자동 생성돼)";
+        catList.appendChild(box);
+      }
     }
 
-    async function refreshCats(){
+    async function refreshAll(){
       await fetchCategories();
       await rebuildCounts();
       renderSidebar();
@@ -540,21 +534,8 @@
       const qtxt = ($("#q").value||"").trim().toLowerCase();
       const sort = $("#sort").value;
 
-      const filters = [ where("isDeleted","==",false) ];
-      if (currentCatId !== "all"){
-        filters.push(where("categoryId","==",currentCatId));
-      }
-
-      const orders = [];
-      if (sort === "popular"){
-        orders.push(orderBy("likeCount","desc"), orderBy("createdAt","desc"));
-      } else if (sort === "pinThenNew"){
-        orders.push(orderBy("pin","desc"), orderBy("createdAt","desc"));
-      } else {
-        orders.push(orderBy("createdAt","desc"));
-      }
-
-      const qq = query(collection(db,"posts"), ...filters, ...orders, limit(50));
+      // 🔥 인덱스 꼬임 방지: createdAt 단일 orderBy만
+      const qq = query(collection(db,"posts"), orderBy("createdAt","desc"), limit(200));
       const snap = await getDocs(qq);
 
       let arr = snap.docs.map(d=>{
@@ -567,6 +548,13 @@
         };
       });
 
+      // local filter
+      arr = arr.filter(p => !p.isDeleted);
+
+      if (currentCatId !== "all"){
+        arr = arr.filter(p => (p.categoryId || "") === currentCatId);
+      }
+
       if (qtxt){
         arr = arr.filter(p =>
           (p.title||"").toLowerCase().includes(qtxt) ||
@@ -574,7 +562,17 @@
           (p.authorNick||"").toLowerCase().includes(qtxt)
         );
       }
-      return arr;
+
+      // local sort
+      if (sort === "popular"){
+        arr.sort((a,b)=> (Number(b.likeCount||0) - Number(a.likeCount||0)) || (Number(b.createdAt||0)-Number(a.createdAt||0)));
+      } else if (sort === "pinThenNew"){
+        arr.sort((a,b)=> (Number(!!b.pin) - Number(!!a.pin)) || (Number(b.createdAt||0)-Number(a.createdAt||0)));
+      } else {
+        arr.sort((a,b)=> Number(b.createdAt||0)-Number(a.createdAt||0));
+      }
+
+      return arr.slice(0, 50);
     }
 
     async function fetchPost(postId){
@@ -590,12 +588,8 @@
     }
 
     async function fetchComments(postId){
-      const qq = query(
-        collection(db,"posts",postId,"comments"),
-        where("isDeleted","==",false),
-        orderBy("createdAt","asc"),
-        limit(200)
-      );
+      // 🔥 인덱스 꼬임 방지: where 없이 정렬만 → 삭제는 local filter
+      const qq = query(collection(db,"posts",postId,"comments"), orderBy("createdAt","asc"), limit(200));
       const snap = await getDocs(qq);
       return snap.docs.map(d=>{
         const c = d.data();
@@ -604,7 +598,7 @@
           ...c,
           createdAt: c.createdAt?.toMillis ? c.createdAt.toMillis() : c.createdAt
         };
-      });
+      }).filter(c => !c.isDeleted);
     }
 
     async function hasLiked(postId){
@@ -627,7 +621,7 @@
       if (viewMode === "list"){
         const c = currentCatObj();
         mainTitle.textContent = (currentCatId==="all") ? "전체 글" : (c ? c.name : "카테고리");
-        mainSub.textContent = "우측 카테고리에서 이동하고, 글을 누르면 본문으로 들어가.";
+        mainSub.textContent = "카테고리에서 이동하고, 글을 누르면 본문으로 들어가.";
         btnBack.style.display = "none";
         searchBar.style.display = "";
       } else {
@@ -637,9 +631,8 @@
         searchBar.style.display = "none";
       }
 
-      // ✅ 전체(all)에서도 "내가 쓸 수 있는 카테고리"가 있으면 글쓰기 활성화
-      const writable = cats.some(c => canWriteInCat(c));
-      $("#btnNew").disabled = !writable;
+      const c = currentCatObj();
+      $("#btnNew").disabled = !(c && canWriteInCat(c));
     }
 
     async function renderList(){
@@ -721,13 +714,6 @@
     async function render(){
       setPills();
       syncHeader();
-
-      if (cats.length === 0){
-        try{
-          await fetchCategories();
-          await rebuildCounts();
-        }catch(e){}
-      }
       renderSidebar();
 
       const listView = $("#listView");
@@ -856,7 +842,7 @@
         selectedPostId = null;
         location.hash = "";
         syncHeader();
-        await render();
+        await refreshAll();
       }catch(e){
         toast("삭제 실패", e);
       }
@@ -892,28 +878,18 @@
       modalBg.classList.add("show");
       modalBg.setAttribute("aria-hidden","false");
 
-      // ✅ 내가 글 쓸 수 있는 카테고리만 노출
       fCat.innerHTML = "";
       for (const c of cats){
-        if (!canWriteInCat(c)) continue;
         const opt = document.createElement("option");
         opt.value = c.id;
-        opt.textContent = c.name;
+        opt.textContent = `${c.name}${c.writePolicy==="admin" ? " (관리자전용)" : ""}`;
         fCat.appendChild(opt);
       }
 
-      if (!fCat.children.length){
-        toast("글쓸 수 있는 카테고리가 없어 (권한 확인)");
-        closeModal();
-        return;
-      }
-
-      // ✅ 선택 기본값
-      if (currentCatId !== "all" && catMap.get(currentCatId) && canWriteInCat(catMap.get(currentCatId))){
+      if (currentCatId !== "all" && catMap.get(currentCatId)){
         fCat.value = currentCatId;
-      } else {
-        // 일반 유저는 유저게시판이 제일 먼저 오도록 order 유지(30)
-        fCat.value = fCat.children[0].value;
+      } else if (cats[0]) {
+        fCat.value = cats[0].id;
       }
 
       fPin.disabled = !isAdmin();
@@ -926,10 +902,7 @@
       } else {
         fetchPost(selectedPostId).then(p=>{
           if (!p) return;
-          // 수정은 "쓸 수 있는 카테고리" 중에서만 이동 가능
-          if (p.categoryId && [...fCat.options].some(o=>o.value===p.categoryId)){
-            fCat.value = p.categoryId;
-          }
+          fCat.value = p.categoryId || (cats[0]?.id || "");
           fTitle.value = p.title || "";
           fContent.value = p.content || "";
           fPin.checked = !!p.pin && isAdmin();
@@ -944,9 +917,9 @@
       const c = catMap.get(fCat.value);
       if (!c) return $("#fCatHelp").textContent = "카테고리를 선택해줘";
       if (c.writePolicy === "admin"){
-        $("#fCatHelp").textContent = "🔒 관리자전용: 관리자만 글쓰기 가능";
+        $("#fCatHelp").textContent = "🔒 관리자전용 카테고리: 관리자만 글쓰기 가능";
       } else {
-        $("#fCatHelp").textContent = "로그인 유저 글쓰기 가능";
+        $("#fCatHelp").textContent = "유저게시판: 로그인 유저 글쓰기 가능";
       }
     }
 
@@ -961,6 +934,7 @@
       const catId = fCat.value;
       const cat = catMap.get(catId);
       if (!cat) return toast("카테고리를 선택해줘");
+
       if (!canWriteInCat(cat)) return toast("이 카테고리는 글쓰기 권한이 없어");
 
       const title = (fTitle.value||"").trim();
@@ -1026,7 +1000,7 @@
     }
 
     // ===== 이벤트 =====
-    $("#btnRefresh").addEventListener("click", async () => { await refreshCats(); });
+    $("#btnRefresh").addEventListener("click", async () => { await refreshAll(); });
     $("#q").addEventListener("input", async () => { if(viewMode==="list") await renderList(); });
     $("#sort").addEventListener("change", async () => { await render(); });
 
@@ -1054,16 +1028,10 @@
       catch(e){ toast("로그아웃 실패", e); }
     });
 
-    // ✅ 전체(all)에서도 자동으로 '내가 쓸 수 있는 카테고리'로 글쓰기
     $("#btnNew").addEventListener("click", ()=>{
-      const cur = currentCatObj();
-      if (cur && canWriteInCat(cur)){
-        openModal("new");
-        return;
-      }
-      const w = firstWritableCat();
-      if (!w) return toast("글쓰기: 로그인/권한이 필요해");
-      currentCatId = w.id; // 유저면 보통 '유저게시판'이 잡힘
+      const c = currentCatObj();
+      if (!c) return toast("카테고리를 먼저 선택해줘");
+      if (!canWriteInCat(c)) return toast("이 카테고리는 글쓰기 권한이 없어");
       openModal("new");
     });
 
@@ -1095,30 +1063,26 @@
 
     // ===== 초기 + 로그인 감지 =====
     onAuthStateChanged(auth, async (u)=>{
+      // ✅ 로그인 안 되어 있으면 로그인 페이지로 보냄 (카테고리/글 read도 rules상 로그인 필요)
       if (!u){
-        me = { uid:null, nick:"게스트", role:"guest", email:"" };
-        setPills();
-        try{
-          await fetchCategories();
-          await rebuildCounts();
-        }catch(e){}
-        syncHeader();
-        await applyHash();
-        await render();
+        location.href = "./index.html";
         return;
       }
 
       await loadMe(u.uid, u.email || "");
       setPills();
 
-      await fetchCategories();
-      await rebuildCounts();
+      try{
+        await fetchCategories();
+        await rebuildCounts();
+      }catch(e){
+        toast("게시판 로딩 실패(권한/규칙 확인)", e);
+      }
 
       if (currentCatId !== "all" && !catMap.get(currentCatId)){
         currentCatId = "all";
       }
 
-      syncHeader();
       await applyHash();
       await render();
     });
