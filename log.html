@@ -15,6 +15,9 @@
       flex-wrap:wrap;
     }
     .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
+    /* ✅ 추가: 현재 페이지 버튼 강조 */
+    .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+
     .wrap{max-width:900px;margin:0 auto;padding:14px;}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 8px 30px rgba(16,24,40,.06);}
     h2{margin:0 0 10px;font-size:20px}
@@ -130,8 +133,12 @@
   <div class="top">
     <!-- ✅ 공통 네비게이션(항상 표시) -->
     <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
-    <button class="btn" onclick="location.href='log.html'">📒 기록</button>
+    <!-- ✅ 현재 페이지(기록)만 pri -->
+    <button class="btn pri" onclick="location.href='log.html'">📒 기록</button>
     <button class="btn" onclick="location.href='lotto.html'">🎟️ 복권</button>
+
+    <!-- ✅ 추가: 게시판 -->
+    <button class="btn" onclick="location.href='board.html'">📝 게시판</button>
 
     <!-- ✅ 관리자 전용: 유저 목록(추가) -->
     <button class="btn" id="usersBtn" style="display:none" onclick="location.href='users.html'">👥 유저</button>
