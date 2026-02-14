@@ -131,16 +131,6 @@
     .modalHead{display:flex;align-items:center;gap:10px}
     .modalHead h3{margin:0;font-size:16px;font-weight:900}
     .modalHead .x{margin-left:auto}
-
-    .adminBox{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.75);padding:12px}
-    .adminGrid{display:grid;grid-template-columns: 1fr;gap:8px;margin-top:10px}
-    .adminItem{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px}
-    .adminItemTop{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-    .miniBtn{padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;font-weight:900;cursor:pointer}
-    .miniBtn:hover{border-color:#d9dced;transform:translateY(-1px)}
-    .miniBtn.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08);color:#b91c1c}
-    .miniBtn.primary{border-color:rgba(91,124,255,.35);background:rgba(91,124,255,.08);color:#1d4ed8}
-    .help{font-size:12px;color:var(--muted);font-weight:800;line-height:1.35;margin-top:6px}
   </style>
 </head>
 
@@ -235,36 +225,17 @@
           <h3 class="catTitle">카테고리</h3>
           <span class="pill" id="whoPill">-</span>
         </div>
-        <div class="sub" style="margin-top:6px">관리자가 직접 추가/수정/삭제/순서 변경 가능</div>
+        <div class="sub" style="margin-top:6px">
+          카테고리는 3개로 고정(방송공지 / DJ게시판 / 유저게시판)
+        </div>
 
         <div class="catList" id="catList"></div>
-
-        <div id="adminCatBox" class="adminBox" style="display:none">
-          <div class="row" style="justify-content:space-between">
-            <div style="font-weight:900">카테고리 관리(관리자)</div>
-            <span class="badge">Firestore 저장</span>
-          </div>
-
-          <div class="row" style="margin-top:8px">
-            <input id="newCatName" class="input" style="min-width:0" placeholder="새 카테고리 이름" />
-            <select id="newCatPolicy" class="input" style="min-width:140px;flex:0">
-              <option value="user">전체 글쓰기</option>
-              <option value="admin">관리자 전용</option>
-            </select>
-            <button id="btnAddCat" class="btn primary" style="flex:0">추가</button>
-          </div>
-          <div class="help">
-            - “관리자 전용” 카테고리는 🔒 표시, 글쓰기도 관리자만 가능<br/>
-            - 카테고리 이름 바꾸면 새 글부터 새 이름으로 표시됨(기존 글은 자동 동기화 안 함)
-          </div>
-
-          <div class="adminGrid" id="adminCatList"></div>
-        </div>
 
         <div class="divider"></div>
         <div class="sub">권한 규칙</div>
         <div class="sub" style="margin-top:6px">
-          - 카테고리마다 “전체/관리자전용”을 관리자가 설정<br/>
+          - 방송공지/DJ게시판: 관리자만 글쓰기<br/>
+          - 유저게시판: 로그인 유저 글쓰기 가능<br/>
           - 글 수정/삭제: 본인 글 또는 관리자<br/>
           - 좋아요/댓글: 로그인 유저
         </div>
@@ -316,7 +287,7 @@
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
     const firebaseConfig = {
-      apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
+      apiKey: "AIzaSyCgVETp2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
       projectId: "roulette-b5455",
       storageBucket: "roulette-b5455.firebasestorage.app",
@@ -361,7 +332,6 @@
       clearTimeout(t._t);
       t._t = setTimeout(()=>t.classList.remove("show"), 1700);
 
-      // ✅ 실패 원인 바로 보이게 (콘솔에도)
       if (err){
         console.log("[board error]", err);
         const code = err?.code ? `(${err.code}) ` : "";
@@ -396,6 +366,10 @@
       if (!signedIn()) return false;
       if (isAdmin()) return true;
       return p.authorUid === me.uid;
+    }
+
+    function firstWritableCat(){
+      return cats.find(c => canWriteInCat(c)) || null;
     }
 
     // ===== 로그인 유저 정보(users/{uid}) =====
@@ -436,8 +410,6 @@
       $("#btnCmt").disabled = !signedIn();
       $("#cmt").disabled = !signedIn();
       $("#cmt").placeholder = signedIn() ? "댓글을 입력해줘" : "댓글은 로그인 후 작성 가능";
-
-      $("#adminCatBox").style.display = isAdmin() ? "" : "none";
     }
 
     // ===== 카테고리 =====
@@ -446,7 +418,7 @@
         collection(db,"boardCategories"),
         where("isDeleted","==",false),
         orderBy("order","asc"),
-        limit(200)
+        limit(50)
       );
       const snap = await getDocs(qq);
 
@@ -464,9 +436,14 @@
       catMap = new Map();
       for (const c of cats) catMap.set(c.id, c);
 
-      if (cats.length === 0 && isAdmin()){
-        await seedDefaultCategories();
-        return await fetchCategories();
+      // ✅ 카테고리 없으면: 관리자만 시드 생성
+      if (cats.length === 0){
+        if (isAdmin()){
+          await seedDefaultCategories();
+          return await fetchCategories();
+        } else {
+          toast("카테고리가 없어. 관리자 로그인 후 자동으로 생성돼.");
+        }
       }
       return cats;
     }
@@ -476,7 +453,6 @@
         {name:"방송공지", writePolicy:"admin", order:10},
         {name:"DJ게시판", writePolicy:"admin", order:20},
         {name:"유저게시판", writePolicy:"user",  order:30},
-        {name:"TMI",      writePolicy:"admin", order:40},
       ];
       for (const c of base){
         await addDoc(collection(db,"boardCategories"), {
@@ -551,103 +527,10 @@
       }
     }
 
-    function renderAdminCatManager(){
-      if (!isAdmin()) return;
-      const list = $("#adminCatList");
-      list.innerHTML = "";
-
-      const sorted = [...cats].sort((a,b)=> (a.order-b.order) || a.name.localeCompare(b.name,'ko'));
-
-      for (let i=0;i<sorted.length;i++){
-        const c = sorted[i];
-
-        const item = document.createElement("div");
-        item.className = "adminItem";
-        item.innerHTML = `
-          <div class="adminItemTop">
-            <div style="font-weight:900;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <span>${c.name}</span>
-              ${c.writePolicy==="admin" ? `<span class="lock">🔒 관리자전용</span>` : `<span class="tag">전체</span>`}
-              <span class="badge">order: <span class="nums">${c.order}</span></span>
-            </div>
-            <div class="row" style="gap:6px">
-              <button class="miniBtn" data-act="up">▲</button>
-              <button class="miniBtn" data-act="down">▼</button>
-              <button class="miniBtn primary" data-act="edit">수정</button>
-              <button class="miniBtn danger" data-act="del">삭제</button>
-            </div>
-          </div>
-        `;
-
-        item.querySelector('[data-act="up"]').addEventListener("click", async ()=>{
-          if (i===0) return toast("이미 맨 위야");
-          await swapCatOrder(sorted[i], sorted[i-1]);
-          toast("순서 변경");
-          await refreshCats();
-        });
-        item.querySelector('[data-act="down"]').addEventListener("click", async ()=>{
-          if (i===sorted.length-1) return toast("이미 맨 아래야");
-          await swapCatOrder(sorted[i], sorted[i+1]);
-          toast("순서 변경");
-          await refreshCats();
-        });
-        item.querySelector('[data-act="edit"]').addEventListener("click", async ()=>{
-          const newName = prompt("카테고리 이름", c.name);
-          if (newName === null) return;
-          const name = newName.trim();
-          if (!name) return toast("이름이 비었어");
-
-          const pol = prompt('권한: "user"(전체 글쓰기) 또는 "admin"(관리자전용)', c.writePolicy);
-          if (pol === null) return;
-          const writePolicy = (pol.trim()==="admin") ? "admin" : "user";
-
-          try{
-            await updateDoc(doc(db,"boardCategories",c.id), {
-              name,
-              writePolicy,
-              updatedAt: serverTimestamp()
-            });
-            toast("수정 완료");
-            await refreshCats();
-          }catch(e){
-            toast("수정 실패", e);
-          }
-        });
-        item.querySelector('[data-act="del"]').addEventListener("click", async ()=>{
-          if (!confirm(`"${c.name}" 카테고리를 삭제할까?\n(기존 글은 남아있지만, 카테고리 목록에서는 사라져)`)) return;
-          try{
-            await updateDoc(doc(db,"boardCategories",c.id), { isDeleted:true, updatedAt: serverTimestamp() });
-            if (currentCatId === c.id) currentCatId = "all";
-            toast("삭제 완료");
-            await refreshCats();
-          }catch(e){
-            toast("삭제 실패", e);
-          }
-        });
-
-        list.appendChild(item);
-      }
-    }
-
-    async function swapCatOrder(a,b){
-      const aRef = doc(db,"boardCategories",a.id);
-      const bRef = doc(db,"boardCategories",b.id);
-      await runTransaction(db, async (tx)=>{
-        const as = await tx.get(aRef);
-        const bs = await tx.get(bRef);
-        if (!as.exists() || !bs.exists()) return;
-        const ao = as.data().order ?? 0;
-        const bo = bs.data().order ?? 0;
-        tx.update(aRef, { order: bo, updatedAt: serverTimestamp() });
-        tx.update(bRef, { order: ao, updatedAt: serverTimestamp() });
-      });
-    }
-
     async function refreshCats(){
       await fetchCategories();
       await rebuildCounts();
       renderSidebar();
-      renderAdminCatManager();
       syncHeader();
       await render();
     }
@@ -754,8 +637,9 @@
         searchBar.style.display = "none";
       }
 
-      const c = currentCatObj();
-      $("#btnNew").disabled = !(c && canWriteInCat(c));
+      // ✅ 전체(all)에서도 "내가 쓸 수 있는 카테고리"가 있으면 글쓰기 활성화
+      const writable = cats.some(c => canWriteInCat(c));
+      $("#btnNew").disabled = !writable;
     }
 
     async function renderList(){
@@ -845,7 +729,6 @@
         }catch(e){}
       }
       renderSidebar();
-      renderAdminCatManager();
 
       const listView = $("#listView");
       const detailView = $("#detailView");
@@ -888,7 +771,6 @@
           viewed.add(id);
           sessionStorage.setItem(viewedKey, JSON.stringify([...viewed]));
         }catch(e){
-          // 조회수 실패는 치명적 아님
           console.log("viewCount update failed", e);
         }
       }
@@ -935,7 +817,7 @@
 
       try{
         const postRef = doc(db,"posts",postId);
-        const cRef = doc(collection(db,"posts",postId,"comments")); // ✅ 랜덤 id
+        const cRef = doc(collection(db,"posts",postId,"comments"));
 
         await runTransaction(db, async (tx)=>{
           const ps = await tx.get(postRef);
@@ -1010,18 +892,28 @@
       modalBg.classList.add("show");
       modalBg.setAttribute("aria-hidden","false");
 
+      // ✅ 내가 글 쓸 수 있는 카테고리만 노출
       fCat.innerHTML = "";
       for (const c of cats){
+        if (!canWriteInCat(c)) continue;
         const opt = document.createElement("option");
         opt.value = c.id;
-        opt.textContent = `${c.name}${c.writePolicy==="admin" ? " (관리자전용)" : ""}`;
+        opt.textContent = c.name;
         fCat.appendChild(opt);
       }
 
-      if (currentCatId !== "all" && catMap.get(currentCatId)){
+      if (!fCat.children.length){
+        toast("글쓸 수 있는 카테고리가 없어 (권한 확인)");
+        closeModal();
+        return;
+      }
+
+      // ✅ 선택 기본값
+      if (currentCatId !== "all" && catMap.get(currentCatId) && canWriteInCat(catMap.get(currentCatId))){
         fCat.value = currentCatId;
-      } else if (cats[0]) {
-        fCat.value = cats[0].id;
+      } else {
+        // 일반 유저는 유저게시판이 제일 먼저 오도록 order 유지(30)
+        fCat.value = fCat.children[0].value;
       }
 
       fPin.disabled = !isAdmin();
@@ -1034,7 +926,10 @@
       } else {
         fetchPost(selectedPostId).then(p=>{
           if (!p) return;
-          fCat.value = p.categoryId || (cats[0]?.id || "");
+          // 수정은 "쓸 수 있는 카테고리" 중에서만 이동 가능
+          if (p.categoryId && [...fCat.options].some(o=>o.value===p.categoryId)){
+            fCat.value = p.categoryId;
+          }
           fTitle.value = p.title || "";
           fContent.value = p.content || "";
           fPin.checked = !!p.pin && isAdmin();
@@ -1049,9 +944,9 @@
       const c = catMap.get(fCat.value);
       if (!c) return $("#fCatHelp").textContent = "카테고리를 선택해줘";
       if (c.writePolicy === "admin"){
-        $("#fCatHelp").textContent = "🔒 관리자전용 카테고리: 관리자만 글쓰기 가능";
+        $("#fCatHelp").textContent = "🔒 관리자전용: 관리자만 글쓰기 가능";
       } else {
-        $("#fCatHelp").textContent = "전체 글쓰기 가능(로그인 필요)";
+        $("#fCatHelp").textContent = "로그인 유저 글쓰기 가능";
       }
     }
 
@@ -1066,7 +961,6 @@
       const catId = fCat.value;
       const cat = catMap.get(catId);
       if (!cat) return toast("카테고리를 선택해줘");
-
       if (!canWriteInCat(cat)) return toast("이 카테고리는 글쓰기 권한이 없어");
 
       const title = (fTitle.value||"").trim();
@@ -1075,7 +969,6 @@
       if (!content) return toast("내용을 입력해줘");
 
       try{
-        // ✅ rules 대응: pin은 "관리자 + 체크"일 때만 필드를 넣는다(없으면 OK)
         const pinWanted = isAdmin() && !!fPin.checked;
 
         if (modalMode === "new"){
@@ -1094,7 +987,7 @@
             createdAt: serverTimestamp(),
             updatedAt: null
           };
-          if (pinWanted) data.pin = true;   // ✅ 여기 핵심!
+          if (pinWanted) data.pin = true;
 
           const ref = await addDoc(collection(db,"posts"), data);
 
@@ -1116,7 +1009,6 @@
             updatedAt: serverTimestamp()
           };
 
-          // ✅ 관리자만 pin 필드 건드림. 일반유저는 pin 필드 자체를 보내지 않음
           if (isAdmin()){
             patch.pin = pinWanted;
           }
@@ -1132,33 +1024,6 @@
         toast("저장 실패", e);
       }
     }
-
-    // ===== 카테고리 추가(관리자) =====
-    $("#btnAddCat").addEventListener("click", async ()=>{
-      if (!isAdmin()) return toast("관리자만 가능");
-      const name = ($("#newCatName").value||"").trim();
-      const writePolicy = ($("#newCatPolicy").value||"user") === "admin" ? "admin" : "user";
-      if (!name) return toast("카테고리 이름을 입력해줘");
-
-      const maxOrder = cats.reduce((m,c)=>Math.max(m, Number(c.order ?? 0)), 0);
-      const order = parseInt(String(maxOrder + 10), 10); // ✅ int 보장
-
-      try{
-        await addDoc(collection(db,"boardCategories"), {
-          name,
-          writePolicy,
-          order,
-          isDeleted:false,
-          createdAt: serverTimestamp(),
-          updatedAt: null
-        });
-        $("#newCatName").value = "";
-        toast("카테고리 추가됨");
-        await refreshCats();
-      }catch(e){
-        toast("카테고리 추가 실패", e);
-      }
-    });
 
     // ===== 이벤트 =====
     $("#btnRefresh").addEventListener("click", async () => { await refreshCats(); });
@@ -1189,10 +1054,16 @@
       catch(e){ toast("로그아웃 실패", e); }
     });
 
+    // ✅ 전체(all)에서도 자동으로 '내가 쓸 수 있는 카테고리'로 글쓰기
     $("#btnNew").addEventListener("click", ()=>{
-      const c = currentCatObj();
-      if (!c) return toast("카테고리를 먼저 선택해줘");
-      if (!canWriteInCat(c)) return toast("이 카테고리는 글쓰기 권한이 없어");
+      const cur = currentCatObj();
+      if (cur && canWriteInCat(cur)){
+        openModal("new");
+        return;
+      }
+      const w = firstWritableCat();
+      if (!w) return toast("글쓰기: 로그인/권한이 필요해");
+      currentCatId = w.id; // 유저면 보통 '유저게시판'이 잡힘
       openModal("new");
     });
 
