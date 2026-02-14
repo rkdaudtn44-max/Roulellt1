@@ -280,7 +280,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs, setDoc,
+      getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs, setDoc, deleteDoc,
       query, orderBy, limit, serverTimestamp, runTransaction
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
@@ -302,7 +302,7 @@
 
     const ADMIN_EMAILS = ["dori0223@gmail.com"];
 
-    // ✅ 고정 카테고리(3개) - 문서 ID까지 고정!
+    // ✅ 고정 카테고리(3개) - 문서 ID 고정
     const FIXED_CATS = [
       { id:"notice", name:"방송공지", writePolicy:"admin", order:10 },
       { id:"dj",     name:"DJ게시판", writePolicy:"admin", order:20 },
@@ -326,6 +326,37 @@
       const email = String(me.email || "").toLowerCase();
       return me.role === "admin" || ADMIN_EMAILS.includes(email);
     };
+
+    // ✅ 중복 실행 방지 플래그들 (글 2개씩 생성되는 문제 해결 핵심)
+    let savingPost = false;
+    let savingComment = false;
+    let liking = false;
+
+    // ===== (옵션) 경험치 =====
+    // - 프론트에서 xp 올리는 건 가능하지만 치트에 취약할 수 있음(Cloud Functions 권장).
+    const XP_ENABLED = false;   // ✅ 원하면 true로 바꿔서 사용
+    const XP_POST = 5;
+    const XP_COMMENT = 2;
+    const XP_LIKE = 1;
+
+    async function awardXp(delta){
+      if (!XP_ENABLED) return;
+      if (!signedIn()) return;
+      if (!Number.isFinite(delta) || delta === 0) return;
+
+      try{
+        const userRef = doc(db, "users", me.uid);
+        await runTransaction(db, async(tx)=>{
+          const us = await tx.get(userRef);
+          if (!us.exists()) return;
+          const cur = Number(us.data().xp || 0);
+          tx.update(userRef, { xp: Math.max(0, cur + delta), updatedAt: serverTimestamp() });
+        });
+      }catch(e){
+        // xp 실패는 기능에 영향 없게 조용히 처리
+        console.log("awardXp failed", e);
+      }
+    }
 
     function toast(msg, err){
       const t = $("#toast");
@@ -409,11 +440,12 @@
       $("#cmt").placeholder = signedIn() ? "댓글을 입력해줘" : "댓글은 로그인 후 작성 가능";
     }
 
-    // ✅ 관리자 접속 시: 카테고리 3개를 '고정 ID'로 강제 + 나머지 숨김
+    // ✅ 관리자 접속 시: 고정 3개 카테고리를 'ID 고정'으로 upsert
+    // ⚠️ 다른 카테고리를 강제로 삭제/숨김 처리하면 과거 글 수정/삭제가 rules에 막힐 수 있어서
+    // 여기서는 "만들기/정리"만 하고, 화면 노출은 fetchCategories에서 3개만 필터링함.
     async function ensureFixedCategories(){
       if (!isAdmin()) return;
 
-      // 1) 고정 3개 upsert
       for (const c of FIXED_CATS){
         const ref = doc(db, "boardCategories", c.id);
         const snap = await getDoc(ref);
@@ -428,25 +460,20 @@
             updatedAt: null
           });
         } else {
-          await updateDoc(ref, {
-            name: c.name,
-            writePolicy: c.writePolicy,
-            order: c.order,
-            isDeleted: false,
-            updatedAt: serverTimestamp()
-          });
-        }
-      }
+          const cur = snap.data() || {};
+          // 불필요한 write 최소화
+          const need =
+            cur.name !== c.name ||
+            cur.writePolicy !== c.writePolicy ||
+            cur.order !== c.order ||
+            cur.isDeleted === true;
 
-      // 2) 나머지 카테고리들은 숨김 처리
-      const keep = new Set(FIXED_CATS.map(x=>x.id));
-      const snapAll = await getDocs(query(collection(db,"boardCategories"), limit(200)));
-      for (const d of snapAll.docs){
-        if (!keep.has(d.id)){
-          const data = d.data() || {};
-          if (data.isDeleted !== true){
-            await updateDoc(doc(db,"boardCategories", d.id), {
-              isDeleted: true,
+          if (need){
+            await updateDoc(ref, {
+              name: c.name,
+              writePolicy: c.writePolicy,
+              order: c.order,
+              isDeleted: false,
               updatedAt: serverTimestamp()
             });
           }
@@ -469,13 +496,12 @@
         };
       }).filter(c => !c.isDeleted);
 
-      // ✅ 화면에 보이는 것도 3개로 고정
+      // ✅ 화면에는 3개만 보이게 고정
       const allowed = new Set(FIXED_CATS.map(x=>x.id));
       cats = cats.filter(c => allowed.has(c.id));
 
       catMap = new Map();
       for (const c of cats) catMap.set(c.id, c);
-
       return cats;
     }
 
@@ -591,6 +617,10 @@
       } else {
         arr.sort((a,b)=> Number(b.createdAt||0)-Number(a.createdAt||0));
       }
+
+      // ✅ 혹시라도 동일 id가 섞여 들어오면 한번 더 제거 (안전망)
+      const seen = new Set();
+      arr = arr.filter(p => (seen.has(p.id) ? false : (seen.add(p.id), true)));
 
       return arr.slice(0, 50);
     }
@@ -784,13 +814,18 @@
 
     async function toggleLike(){
       if (!signedIn()) return toast("로그인 후 좋아요 가능");
+      if (liking) return; // ✅ 연타 방지
+      liking = true;
+
       const postId = selectedPostId;
-      if (!postId) return;
+      if (!postId){ liking = false; return; }
 
       const postRef = doc(db,"posts",postId);
       const likeRef = doc(db,"posts",postId,"likes",me.uid);
 
       try{
+        let added = false;
+
         await runTransaction(db, async (tx)=>{
           const ps = await tx.get(postRef);
           if(!ps.exists()) throw new Error("게시글이 없어");
@@ -802,21 +837,31 @@
             tx.delete(likeRef);
             tx.update(postRef, { likeCount: Math.max(0, curLike - 1) });
           } else {
+            added = true;
             tx.set(likeRef, { uid: me.uid, createdAt: serverTimestamp() });
             tx.update(postRef, { likeCount: curLike + 1 });
           }
         });
+
+        if (added) await awardXp(XP_LIKE);
         await render();
       }catch(e){
         toast("좋아요 처리 실패", e);
+      }finally{
+        liking = false;
       }
     }
 
     async function addComment(){
       if (!signedIn()) return toast("로그인 후 댓글 가능");
+      if (savingComment) return; // ✅ 중복 댓글 방지
+      savingComment = true;
+
       const txt = ($("#cmt").value||"").trim();
-      if (!txt) return toast("댓글을 입력해줘");
+      if (!txt){ savingComment = false; return toast("댓글을 입력해줘"); }
       const postId = selectedPostId;
+
+      $("#btnCmt").disabled = true;
 
       try{
         const postRef = doc(db,"posts",postId);
@@ -839,11 +884,16 @@
           tx.update(postRef, { commentCount: cur + 1 });
         });
 
+        await awardXp(XP_COMMENT);
+
         $("#cmt").value = "";
         toast("댓글 등록!");
         await render();
       }catch(e){
         toast("댓글 등록 실패", e);
+      }finally{
+        savingComment = false;
+        $("#btnCmt").disabled = !signedIn();
       }
     }
 
@@ -853,6 +903,7 @@
       if (!confirm("정말 삭제할까?")) return;
 
       try{
+        // 1) 소프트 삭제 우선
         await updateDoc(doc(db,"posts",p.id), { isDeleted:true, updatedAt: serverTimestamp() });
         toast("삭제 완료");
         viewMode = "list";
@@ -861,6 +912,22 @@
         syncHeader();
         await refreshAll();
       }catch(e){
+        // 2) rules(카테고리 정책/상태) 때문에 update가 막히는 케이스 대비
+        if (isAdmin()){
+          try{
+            await deleteDoc(doc(db,"posts",p.id));
+            toast("삭제 완료(강제)");
+            viewMode = "list";
+            selectedPostId = null;
+            location.hash = "";
+            syncHeader();
+            await refreshAll();
+            return;
+          }catch(e2){
+            toast("삭제 실패", e2);
+            return;
+          }
+        }
         toast("삭제 실패", e);
       }
     }
@@ -878,6 +945,7 @@
       }
     }
 
+    // ===== 글쓰기/수정 모달 =====
     const modalBg = $("#modalBg");
     const modalClose = $("#modalClose");
     const modalSave = $("#modalSave");
@@ -893,6 +961,11 @@
       modalTitle.textContent = (mode==="new") ? "글쓰기" : "글 수정";
       modalBg.classList.add("show");
       modalBg.setAttribute("aria-hidden","false");
+
+      // ✅ 저장버튼 상태 원복
+      modalSave.disabled = false;
+      modalSave.textContent = "저장";
+      modalClose.disabled = false;
 
       fCat.innerHTML = "";
       for (const c of cats){
@@ -940,6 +1013,7 @@
     }
 
     function closeModal(){
+      if (savingPost) return; // ✅ 저장 중 닫기 방지(중복 생성 방지에 도움)
       modalBg.classList.remove("show");
       modalBg.setAttribute("aria-hidden","true");
     }
@@ -947,15 +1021,24 @@
     modalBg.addEventListener("click", (e)=>{ if(e.target===modalBg) closeModal(); });
 
     async function savePost(){
+      // ✅ 핵심: 중복 실행 방지
+      if (savingPost) return;
+      savingPost = true;
+
       const catId = fCat.value;
       const cat = catMap.get(catId);
-      if (!cat) return toast("카테고리를 선택해줘");
-      if (!canWriteInCat(cat)) return toast("이 카테고리는 글쓰기 권한이 없어");
+      if (!cat){ savingPost = false; return toast("카테고리를 선택해줘"); }
+      if (!canWriteInCat(cat)){ savingPost = false; return toast("이 카테고리는 글쓰기 권한이 없어"); }
 
       const title = (fTitle.value||"").trim();
       const content = (fContent.value||"").trim();
-      if (!title) return toast("제목을 입력해줘");
-      if (!content) return toast("내용을 입력해줘");
+      if (!title){ savingPost = false; return toast("제목을 입력해줘"); }
+      if (!content){ savingPost = false; return toast("내용을 입력해줘"); }
+
+      // ✅ UI 잠금(중복 클릭 방지)
+      modalSave.disabled = true;
+      modalSave.textContent = "저장중…";
+      modalClose.disabled = true;
 
       try{
         const pinWanted = isAdmin() && !!fPin.checked;
@@ -980,6 +1063,9 @@
 
           const ref = await addDoc(collection(db,"posts"), data);
 
+          await awardXp(XP_POST);
+
+          // ✅ 여기서부터는 1번만 실행되게끔 위에 savingPost가 막아줌
           closeModal();
           toast("작성 완료!");
           await rebuildCounts();
@@ -987,7 +1073,7 @@
 
         } else {
           const p = await fetchPost(selectedPostId);
-          if (!canEditPost(p)) return toast("수정 권한이 없어");
+          if (!canEditPost(p)) throw new Error("수정 권한이 없어");
 
           const patch = {
             categoryId: cat.id,
@@ -1011,9 +1097,15 @@
         }
       }catch(e){
         toast("저장 실패", e);
+      }finally{
+        savingPost = false;
+        modalSave.disabled = false;
+        modalSave.textContent = "저장";
+        modalClose.disabled = false;
       }
     }
 
+    // ===== 이벤트 =====
     $("#btnRefresh").addEventListener("click", async () => { await refreshAll(); });
     $("#q").addEventListener("input", async () => { if(viewMode==="list") await renderList(); });
     $("#sort").addEventListener("change", async () => { await render(); });
@@ -1057,6 +1149,7 @@
 
     modalSave.addEventListener("click", savePost);
 
+    // ===== 해시 라우팅 =====
     async function applyHash(){
       const h = (location.hash||"").replace(/^#/,"");
       if (!h) return;
@@ -1074,6 +1167,7 @@
     }
     window.addEventListener("hashchange", async ()=>{ await applyHash(); await render(); });
 
+    // ===== 초기 + 로그인 감지 =====
     onAuthStateChanged(auth, async (u)=>{
       if (!u){
         location.href = "./index.html";
@@ -1084,9 +1178,7 @@
       setPills();
 
       try{
-        // ✅ 여기서 “카테고리 3개 고정 + 나머지 숨김”이 실행됨
         await ensureFixedCategories();
-
         await fetchCategories();
         await rebuildCounts();
       }catch(e){
