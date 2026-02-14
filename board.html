@@ -151,7 +151,7 @@
       <div class="nav">
         <a class="btn small" href="./roulette.html">룰렛</a>
         <a class="btn small" href="./log.html">기록</a>
-        <a class="btn small" href="./lottery.html">복권</a>
+        <a class="btn small" href="./lotto.html">복권</a>
         <a class="btn small primary" href="./board.html">게시판</a>
       </div>
       <span id="rolePill" class="pill">로그인 확인중…</span>
@@ -312,10 +312,9 @@
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
     import {
       getFirestore, doc, getDoc, collection, addDoc, updateDoc, getDocs,
-      query, where, orderBy, limit, serverTimestamp, increment, runTransaction
+      query, where, orderBy, limit, serverTimestamp, runTransaction
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
-    // ✅ 네가 준 firebaseConfig 그대로 적용
     const firebaseConfig = {
       apiKey: "AIzaSyCgVETP2TbQOkDeh5D2ocwXhUMPcZYYKbs",
       authDomain: "roulette-b5455.firebaseapp.com",
@@ -332,31 +331,43 @@
 
     const $ = (s) => document.querySelector(s);
 
+    // ✅ 이메일 관리자도 UI에서 admin으로 취급(bootstrap)
+    const ADMIN_EMAILS = ["dori0223@gmail.com"];
+
     // ===== 상태 =====
-    let me = { uid:null, nick:"게스트", role:"guest" }; // role: guest/user/admin
-    let currentCatId = "all"; // all or categoryId
-    let viewMode = "list";    // list | detail
+    let me = { uid:null, nick:"게스트", role:"guest", email:"" }; // role: guest/user/admin
+    let currentCatId = "all";
+    let viewMode = "list";
     let selectedPostId = null;
 
-    // 카테고리 캐시
-    let cats = [];               // [{id,name,writePolicy,order,isDeleted}]
-    let catMap = new Map();      // id -> cat
-    let countsCache = new Map(); // catId -> count
+    let cats = [];
+    let catMap = new Map();
+    let countsCache = new Map();
 
-    // 중복 조회수 방지(같은 탭)
     const viewedKey = "boardViewed_v1";
     const viewed = new Set(JSON.parse(sessionStorage.getItem(viewedKey) || "[]"));
 
     // ===== 유틸 =====
     const signedIn = () => !!me.uid;
-    const isAdmin = () => me.role === "admin";
+    const isAdmin = () => {
+      const email = String(me.email || "").toLowerCase();
+      return me.role === "admin" || ADMIN_EMAILS.includes(email);
+    };
 
-    function toast(msg){
+    function toast(msg, err){
       const t = $("#toast");
       t.textContent = msg;
       t.classList.add("show");
       clearTimeout(t._t);
-      t._t = setTimeout(()=>t.classList.remove("show"), 1600);
+      t._t = setTimeout(()=>t.classList.remove("show"), 1700);
+
+      // ✅ 실패 원인 바로 보이게 (콘솔에도)
+      if (err){
+        console.log("[board error]", err);
+        const code = err?.code ? `(${err.code}) ` : "";
+        const m = err?.message || String(err);
+        console.warn(code + m);
+      }
     }
 
     function fmtTime(ts){
@@ -377,7 +388,7 @@
     function canWriteInCat(cat){
       if (!cat) return false;
       if (cat.writePolicy === "admin") return isAdmin();
-      return signedIn(); // user
+      return signedIn();
     }
 
     function canEditPost(p){
@@ -387,7 +398,7 @@
       return p.authorUid === me.uid;
     }
 
-    // ===== 로그인 유저 정보(users/{uid}에서 role/nickname 읽기) =====
+    // ===== 로그인 유저 정보(users/{uid}) =====
     async function loadMe(uid, email){
       let role = "user";
       let nick = (email ? email.split("@")[0] : "유저");
@@ -399,7 +410,7 @@
           nick = d.nickname || d.nick || nick;
         }
       }catch(e){}
-      me = { uid, role, nick };
+      me = { uid, role, nick, email: email || "" };
     }
 
     function setPills(){
@@ -417,10 +428,11 @@
       } else {
         rolePill.textContent = "로그인이 필요해";
       }
+
       whoPill.className = rolePill.className;
       whoPill.textContent = rolePill.textContent;
-      btnLogout.style.display = signedIn() ? "" : "none";
 
+      btnLogout.style.display = signedIn() ? "" : "none";
       $("#btnCmt").disabled = !signedIn();
       $("#cmt").disabled = !signedIn();
       $("#cmt").placeholder = signedIn() ? "댓글을 입력해줘" : "댓글은 로그인 후 작성 가능";
@@ -428,9 +440,10 @@
       $("#adminCatBox").style.display = isAdmin() ? "" : "none";
     }
 
-    // ===== 카테고리: Firestore에서 로딩 =====
+    // ===== 카테고리 =====
     async function fetchCategories(){
-      const qq = query(collection(db,"boardCategories"),
+      const qq = query(
+        collection(db,"boardCategories"),
         where("isDeleted","==",false),
         orderBy("order","asc"),
         limit(200)
@@ -442,7 +455,7 @@
         return {
           id:d.id,
           name:x.name || "(이름없음)",
-          writePolicy: x.writePolicy || "user", // user | admin
+          writePolicy: x.writePolicy || "user",
           order: x.order ?? 0,
           isDeleted: !!x.isDeleted
         };
@@ -451,7 +464,6 @@
       catMap = new Map();
       for (const c of cats) catMap.set(c.id, c);
 
-      // 최초 카테고리 없으면: 관리자면 기본 3개 자동 생성(안전)
       if (cats.length === 0 && isAdmin()){
         await seedDefaultCategories();
         return await fetchCategories();
@@ -478,12 +490,12 @@
       }
     }
 
-    // 카테고리별 글 수 (최근 500개 기준 간이 카운트)
     async function rebuildCounts(){
       countsCache = new Map();
       countsCache.set("all", 0);
 
-      const qq = query(collection(db,"posts"),
+      const qq = query(
+        collection(db,"posts"),
         where("isDeleted","==",false),
         orderBy("createdAt","desc"),
         limit(500)
@@ -501,7 +513,6 @@
       const catList = $("#catList");
       catList.innerHTML = "";
 
-      // 전체
       const allBtn = document.createElement("button");
       allBtn.className = "catBtn" + (currentCatId==="all" ? " active" : "");
       allBtn.dataset.cat = "all";
@@ -518,7 +529,6 @@
       });
       catList.appendChild(allBtn);
 
-      // 실제 카테고리
       for (const c of cats){
         const btn = document.createElement("button");
         btn.className = "catBtn" + (c.id===currentCatId ? " active" : "");
@@ -591,20 +601,28 @@
           if (pol === null) return;
           const writePolicy = (pol.trim()==="admin") ? "admin" : "user";
 
-          await updateDoc(doc(db,"boardCategories",c.id), {
-            name,
-            writePolicy,
-            updatedAt: serverTimestamp()
-          });
-          toast("수정 완료");
-          await refreshCats();
+          try{
+            await updateDoc(doc(db,"boardCategories",c.id), {
+              name,
+              writePolicy,
+              updatedAt: serverTimestamp()
+            });
+            toast("수정 완료");
+            await refreshCats();
+          }catch(e){
+            toast("수정 실패", e);
+          }
         });
         item.querySelector('[data-act="del"]').addEventListener("click", async ()=>{
           if (!confirm(`"${c.name}" 카테고리를 삭제할까?\n(기존 글은 남아있지만, 카테고리 목록에서는 사라져)`)) return;
-          await updateDoc(doc(db,"boardCategories",c.id), { isDeleted:true, updatedAt: serverTimestamp() });
-          if (currentCatId === c.id) currentCatId = "all";
-          toast("삭제 완료");
-          await refreshCats();
+          try{
+            await updateDoc(doc(db,"boardCategories",c.id), { isDeleted:true, updatedAt: serverTimestamp() });
+            if (currentCatId === c.id) currentCatId = "all";
+            toast("삭제 완료");
+            await refreshCats();
+          }catch(e){
+            toast("삭제 실패", e);
+          }
         });
 
         list.appendChild(item);
@@ -666,7 +684,6 @@
         };
       });
 
-      // 검색은 클라이언트 필터(가볍게)
       if (qtxt){
         arr = arr.filter(p =>
           (p.title||"").toLowerCase().includes(qtxt) ||
@@ -737,7 +754,6 @@
         searchBar.style.display = "none";
       }
 
-      // 글쓰기 버튼
       const c = currentCatObj();
       $("#btnNew").disabled = !(c && canWriteInCat(c));
     }
@@ -751,7 +767,6 @@
       emptyEl.style.display = items.length ? "none" : "";
 
       for (const p of items){
-        // 최신 카테고리 이름/권한을 catMap으로 우선 적용
         const cat = p.categoryId ? catMap.get(p.categoryId) : null;
         const catName = cat ? cat.name : (p.categoryName || "-");
         const lock = cat ? (cat.writePolicy==="admin") : !!p.categoryAdminOnly;
@@ -823,7 +838,6 @@
       setPills();
       syncHeader();
 
-      // 카테고리 없으면(게스트도) 사이드 렌더는 가능해야 함
       if (cats.length === 0){
         try{
           await fetchCategories();
@@ -861,13 +875,22 @@
       viewMode = "detail";
       syncHeader();
 
-      // 조회수 +1 (탭 중복 방지)
+      // ✅ 조회수: increment() 금지 → 트랜잭션으로 +1 (rules 통과)
       if (!viewed.has(id)){
         try{
-          await updateDoc(doc(db,"posts",id), { viewCount: increment(1) });
+          const postRef = doc(db,"posts",id);
+          await runTransaction(db, async (tx)=>{
+            const s = await tx.get(postRef);
+            if(!s.exists()) return;
+            const cur = Number(s.data().viewCount||0);
+            tx.update(postRef, { viewCount: cur + 1 });
+          });
           viewed.add(id);
           sessionStorage.setItem(viewedKey, JSON.stringify([...viewed]));
-        }catch(e){}
+        }catch(e){
+          // 조회수 실패는 치명적 아님
+          console.log("viewCount update failed", e);
+        }
       }
 
       location.hash = `post=${encodeURIComponent(id)}`;
@@ -884,18 +907,23 @@
 
       try{
         await runTransaction(db, async (tx)=>{
-          const likeSnap = await tx.get(likeRef);
-          if (likeSnap.exists()){
+          const ps = await tx.get(postRef);
+          if(!ps.exists()) throw new Error("게시글이 없어");
+          const p = ps.data() || {};
+          const curLike = Number(p.likeCount||0);
+
+          const ls = await tx.get(likeRef);
+          if (ls.exists()){
             tx.delete(likeRef);
-            tx.update(postRef, { likeCount: increment(-1) });
+            tx.update(postRef, { likeCount: Math.max(0, curLike - 1) });
           } else {
             tx.set(likeRef, { uid: me.uid, createdAt: serverTimestamp() });
-            tx.update(postRef, { likeCount: increment(1) });
+            tx.update(postRef, { likeCount: curLike + 1 });
           }
         });
         await render();
       }catch(e){
-        toast("좋아요 처리 실패");
+        toast("좋아요 처리 실패", e);
       }
     }
 
@@ -906,19 +934,31 @@
       const postId = selectedPostId;
 
       try{
-        await addDoc(collection(db,"posts",postId,"comments"), {
-          content: txt,
-          authorUid: me.uid,
-          authorNick: me.nick,
-          isDeleted: false,
-          createdAt: serverTimestamp()
+        const postRef = doc(db,"posts",postId);
+        const cRef = doc(collection(db,"posts",postId,"comments")); // ✅ 랜덤 id
+
+        await runTransaction(db, async (tx)=>{
+          const ps = await tx.get(postRef);
+          if(!ps.exists()) throw new Error("게시글이 없어");
+          const p = ps.data() || {};
+          const cur = Number(p.commentCount||0);
+
+          tx.set(cRef, {
+            content: txt,
+            authorUid: me.uid,
+            authorNick: me.nick,
+            isDeleted: false,
+            createdAt: serverTimestamp()
+          });
+
+          tx.update(postRef, { commentCount: cur + 1 });
         });
-        await updateDoc(doc(db,"posts",postId), { commentCount: increment(1) });
+
         $("#cmt").value = "";
         toast("댓글 등록!");
         await render();
       }catch(e){
-        toast("댓글 등록 실패");
+        toast("댓글 등록 실패", e);
       }
     }
 
@@ -936,7 +976,7 @@
         syncHeader();
         await render();
       }catch(e){
-        toast("삭제 실패");
+        toast("삭제 실패", e);
       }
     }
 
@@ -949,7 +989,7 @@
         toast(p.pin ? "고정 해제" : "고정");
         await render();
       }catch(e){
-        toast("고정 실패");
+        toast("고정 실패", e);
       }
     }
 
@@ -962,7 +1002,7 @@
     const fTitle = $("#fTitle");
     const fContent = $("#fContent");
     const fPin = $("#fPin");
-    let modalMode = "new"; // new | edit
+    let modalMode = "new";
 
     function openModal(mode){
       modalMode = mode;
@@ -970,7 +1010,6 @@
       modalBg.classList.add("show");
       modalBg.setAttribute("aria-hidden","false");
 
-      // 카테고리 옵션(전체 제외)
       fCat.innerHTML = "";
       for (const c of cats){
         const opt = document.createElement("option");
@@ -979,14 +1018,12 @@
         fCat.appendChild(opt);
       }
 
-      // 기본 선택: 현재 카테고리(전체면 첫 카테고리)
       if (currentCatId !== "all" && catMap.get(currentCatId)){
         fCat.value = currentCatId;
       } else if (cats[0]) {
         fCat.value = cats[0].id;
       }
 
-      // pin은 관리자만
       fPin.disabled = !isAdmin();
       if (!isAdmin()) fPin.checked = false;
 
@@ -1038,14 +1075,14 @@
       if (!content) return toast("내용을 입력해줘");
 
       try{
-        const pin = isAdmin() ? !!fPin.checked : false;
+        // ✅ rules 대응: pin은 "관리자 + 체크"일 때만 필드를 넣는다(없으면 OK)
+        const pinWanted = isAdmin() && !!fPin.checked;
 
         if (modalMode === "new"){
-          const ref = await addDoc(collection(db,"posts"), {
+          const data = {
             categoryId: cat.id,
-            categoryName: cat.name,           // 스냅샷(없어도 되지만 표시 안정용)
+            categoryName: cat.name,
             categoryAdminOnly: cat.writePolicy==="admin",
-            pin,
             title,
             content,
             authorUid: me.uid,
@@ -1056,31 +1093,43 @@
             commentCount: 0,
             createdAt: serverTimestamp(),
             updatedAt: null
-          });
+          };
+          if (pinWanted) data.pin = true;   // ✅ 여기 핵심!
+
+          const ref = await addDoc(collection(db,"posts"), data);
+
           closeModal();
           toast("작성 완료!");
           await rebuildCounts();
           await openPost(ref.id);
+
         } else {
           const p = await fetchPost(selectedPostId);
           if (!canEditPost(p)) return toast("수정 권한이 없어");
 
-          await updateDoc(doc(db,"posts",p.id), {
+          const patch = {
             categoryId: cat.id,
             categoryName: cat.name,
             categoryAdminOnly: cat.writePolicy==="admin",
-            pin,
             title,
             content,
             updatedAt: serverTimestamp()
-          });
+          };
+
+          // ✅ 관리자만 pin 필드 건드림. 일반유저는 pin 필드 자체를 보내지 않음
+          if (isAdmin()){
+            patch.pin = pinWanted;
+          }
+
+          await updateDoc(doc(db,"posts",p.id), patch);
+
           closeModal();
           toast("수정 완료!");
           await rebuildCounts();
           await render();
         }
       }catch(e){
-        toast("저장 실패");
+        toast("저장 실패", e);
       }
     }
 
@@ -1091,13 +1140,14 @@
       const writePolicy = ($("#newCatPolicy").value||"user") === "admin" ? "admin" : "user";
       if (!name) return toast("카테고리 이름을 입력해줘");
 
-      // order = max + 10
-      const maxOrder = cats.reduce((m,c)=>Math.max(m, c.order ?? 0), 0);
+      const maxOrder = cats.reduce((m,c)=>Math.max(m, Number(c.order ?? 0)), 0);
+      const order = parseInt(String(maxOrder + 10), 10); // ✅ int 보장
+
       try{
         await addDoc(collection(db,"boardCategories"), {
           name,
           writePolicy,
-          order: maxOrder + 10,
+          order,
           isDeleted:false,
           createdAt: serverTimestamp(),
           updatedAt: null
@@ -1106,7 +1156,7 @@
         toast("카테고리 추가됨");
         await refreshCats();
       }catch(e){
-        toast("카테고리 추가 실패");
+        toast("카테고리 추가 실패", e);
       }
     });
 
@@ -1131,12 +1181,12 @@
     $("#btnCopy").addEventListener("click", async ()=>{
       const link = location.origin + location.pathname + `#post=${encodeURIComponent(selectedPostId||"")}`;
       try{ await navigator.clipboard.writeText(link); toast("링크 복사 완료"); }
-      catch(e){ toast("복사 실패(브라우저 권한)"); }
+      catch(e){ toast("복사 실패(브라우저 권한)", e); }
     });
 
     $("#btnLogout").addEventListener("click", async ()=>{
       try{ await signOut(auth); toast("로그아웃"); }
-      catch(e){ toast("로그아웃 실패"); }
+      catch(e){ toast("로그아웃 실패", e); }
     });
 
     $("#btnNew").addEventListener("click", ()=>{
@@ -1175,9 +1225,8 @@
     // ===== 초기 + 로그인 감지 =====
     onAuthStateChanged(auth, async (u)=>{
       if (!u){
-        me = { uid:null, nick:"게스트", role:"guest" };
+        me = { uid:null, nick:"게스트", role:"guest", email:"" };
         setPills();
-        // 로그인 필요 정책: 목록/읽기는 로그인 필요면 rules에서 막힘. UI는 그냥 보여주되 데이터는 안 뜰 수 있음.
         try{
           await fetchCategories();
           await rebuildCounts();
@@ -1188,13 +1237,12 @@
         return;
       }
 
-      await loadMe(u.uid, u.email || null);
+      await loadMe(u.uid, u.email || "");
       setPills();
 
       await fetchCategories();
       await rebuildCounts();
 
-      // 카테고리가 삭제되었는데 선택돼 있으면 all로
       if (currentCatId !== "all" && !catMap.get(currentCatId)){
         currentCatId = "all";
       }
