@@ -61,7 +61,7 @@
 
     .tr{
       display:grid;
-      grid-template-columns: 56px 1fr 90px 120px; /* # / 닉 / 레벨 / 경험치 */
+      grid-template-columns: 56px 1fr 90px 120px 170px; /* # / 닉 / 레벨 / 경험치 / 복권 */
       gap:10px;
       padding:10px 12px;
       border-top:1px solid var(--line);
@@ -78,6 +78,9 @@
     .nums{ font-variant-numeric: tabular-nums; }
 
     .footerRow{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+
+    /* 복권 +/- 버튼을 살짝 작게 */
+    .miniBtn{padding:6px 10px;border-radius:10px}
   </style>
 </head>
 <body>
@@ -125,7 +128,7 @@
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
   import {
     getFirestore,
-    doc, getDoc,
+    doc, getDoc, updateDoc,
     collection, getDocs,
     query, orderBy, limit, startAfter
   } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
@@ -192,12 +195,15 @@
   const leftBox = $("leftBox");
   const rightBox = $("rightBox");
 
-  // rows: { nickname, level, xp }
+  // rows: { uid, nickname, level, xp, lottery }
   let allRows = [];
   let filteredRows = [];
   let lastDoc = null;
   let loaded = 0;
   const PAGE_SIZE = 200;
+
+  // 관리자 여부(안전장치)
+  let IS_ADMIN = false;
 
   function renderTable(boxEl, rows, startIndex){
     boxEl.innerHTML = `
@@ -206,17 +212,31 @@
         <div>닉네임</div>
         <div class="tdRight nums">레벨</div>
         <div class="tdRight nums">경험치</div>
+        <div class="tdRight nums">복권</div>
       </div>
     `;
 
     rows.forEach((r, i)=>{
       const tr = document.createElement("div");
       tr.className = "tr";
+
+      // 관리자만 +/- 표시 (이 페이지는 원래 관리자만 들어오지만, 혹시 모를 안전장치)
+      const lotteryUI = IS_ADMIN
+        ? `
+          <div class="tdRight nums">
+            <button class="btn miniBtn" onclick="window.updateLottery('${r.uid}', -1)">-</button>
+            <span style="margin:0 10px; display:inline-block; min-width:36px; text-align:center;">${Number(r.lottery ?? 0)}</span>
+            <button class="btn miniBtn" onclick="window.updateLottery('${r.uid}', 1)">+</button>
+          </div>
+        `
+        : `<div class="tdRight nums">${Number(r.lottery ?? 0)}</div>`;
+
       tr.innerHTML = `
         <div class="nums">${startIndex + i}</div>
         <div>${r.nickname || "-"}</div>
         <div class="tdRight nums">${Number(r.level ?? 1)}</div>
         <div class="tdRight nums">${Number(r.xp ?? 0).toLocaleString("ko-KR")}</div>
+        ${lotteryUI}
       `;
       boxEl.appendChild(tr);
     });
@@ -275,9 +295,11 @@
       snap.docs.forEach(d=>{
         const u = d.data() || {};
         allRows.push({
+          uid: d.id,
           nickname: normNick(u.nickname || ""),
           level: u.level ?? 1,
-          xp: u.xp ?? 0
+          xp: u.xp ?? 0,
+          lottery: u.lotteryCount ?? 0
         });
       });
 
@@ -302,6 +324,32 @@
 
   moreBtn.onclick = loadNextPage;
 
+  // ✅ 복권 +/- 업데이트 (users/{uid}.lotteryCount)
+  window.updateLottery = async function(uid, amount){
+    if(!IS_ADMIN) return;
+    try{
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+      if(!snap.exists()) return;
+
+      const current = snap.data().lotteryCount ?? 0;
+      let next = current + amount;
+      if(next < 0) next = 0;
+
+      await updateDoc(ref, { lotteryCount: next });
+
+      // 화면 즉시 반영
+      const target = allRows.find(r => r.uid === uid);
+      if(target){
+        target.lottery = next;
+        render();
+      }
+    }catch(e){
+      alert("복권 수정 오류: " + (e?.message || e));
+      showErr(e);
+    }
+  };
+
   onAuthStateChanged(auth, async (u)=>{
     if(!u){
       location.replace("index.html");
@@ -323,6 +371,7 @@
       const myNick = normNick(profile.nickname || "-");
       const role = String(profile.role || "").toLowerCase();
       const isAdmin = role === "admin";
+      IS_ADMIN = isAdmin;
 
       $("who").textContent = `${myNick} · ${isAdmin ? "admin" : "user"}`;
 
