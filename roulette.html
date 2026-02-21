@@ -256,6 +256,17 @@
         return String(itemText || "").includes("복권");
       }
 
+      // ✅ 티켓 필드 호환:
+      // - 신규: lotteryCount
+      // - 구버전: lottoTickets
+      function getTicketsFromUserDoc(data){
+        const a = data?.lotteryCount;
+        const b = data?.lottoTickets;
+        const v = (a !== undefined) ? a : b;
+        return Math.max(0, Number(v || 0));
+      }
+
+      // ✅ 변경 핵심: 지급은 lotteryCount 중심 + lottoTickets도 같이 맞춤
       async function grantLottoTicketsToUid(uid, ticketsToAdd){
         ticketsToAdd = Number(ticketsToAdd || 0);
         if(!Number.isFinite(ticketsToAdd) || ticketsToAdd <= 0) return;
@@ -264,9 +275,14 @@
         await db.runTransaction(async (tx)=>{
           const snap = await tx.get(userRef);
           if(!snap.exists) throw new Error("해당 유저 users 문서가 없습니다.");
-          const cur = Number(snap.data()?.lottoTickets || 0);
+          const data = snap.data() || {};
+          const cur = getTicketsFromUserDoc(data);
+          const next = cur + ticketsToAdd;
+
+          // ✅ 두 필드 모두 같은 값으로 유지(호환)
           tx.update(userRef, {
-            lottoTickets: cur + ticketsToAdd,
+            lotteryCount: next,
+            lottoTickets: next,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
         });
@@ -597,7 +613,7 @@
             await applyDelta(targetNick, currentType, itemText, cnt);
           }
 
-          // 복권 티켓 자동 지급
+          // ✅ 복권 티켓 자동 지급 (lotteryCount 중심 + lottoTickets 동기화)
           if(totalTicketsToGrant > 0){
             await grantLottoTicketsToNickname(targetNick, totalTicketsToGrant);
           }
