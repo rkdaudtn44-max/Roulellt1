@@ -8,7 +8,6 @@
     :root{--bg:#f6f7fb;--card:#fff;--line:#e7e9f2;--text:#111827;--muted:#6b7280;--pri:#5b7cff;--good:#10b981;--bad:#ef4444;}
     body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;color:var(--text);}
 
-    /* ✅ 공통 상단바(룰렛/기록/복권/게시판 + 유저 + 닉/로그아웃) */
     .top{
       position:sticky;top:0;background:rgba(246,247,251,.9);
       backdrop-filter:saturate(180%) blur(10px);
@@ -53,18 +52,11 @@
   </style>
 </head>
 <body>
-  <!-- ✅ 상단 공통 네비게이션 -->
   <div class="top">
     <button class="btn" onclick="location.href='roulette.html'">🎯 룰렛</button>
     <button class="btn" onclick="location.href='log.html'">📒 기록</button>
-
-    <!-- ✅ 현재 페이지(복권)만 pri -->
     <button class="btn pri" onclick="location.href='lotto.html'">🎟️ 복권</button>
-
-    <!-- ✅ 추가: 게시판 -->
     <button class="btn" onclick="location.href='board.html'">📝 게시판</button>
-
-    <!-- ✅ 관리자 전용: 유저 목록 -->
     <button class="btn" id="usersBtn" style="display:none" onclick="location.href='users.html'">👥 유저</button>
 
     <div style="flex:1"></div>
@@ -150,7 +142,7 @@
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
     import {
       getFirestore, doc, getDoc, setDoc, serverTimestamp, runTransaction,
-      query, orderBy, limit, getDocs, collection, onSnapshot
+      query, orderBy, limit, getDocs, collection, onSnapshot, addDoc
     } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -179,14 +171,12 @@
       errBox.textContent = "";
     };
 
-    // ✅ 상단바 버튼
     $("logoutBtn").onclick = async () => {
       await signOut(auth);
       location.replace("./index.html");
     };
     $("refreshBtn").onclick = () => location.reload();
 
-    // ✅ 닉네임 정규화 통일(룰렛/로그/index와 동일)
     function normNick(v){
       return String(v ?? "")
         .normalize("NFC")
@@ -199,7 +189,6 @@
       return "";
     }
 
-    // ✅ 티켓(복권) UI
     const ticketCountEl = $("ticketCount");
     const ticketHint = $("ticketHint");
     let myTickets = 0;
@@ -232,7 +221,6 @@
       }
     }
 
-    // ----- 레벨 계산(기존 유지)
     function calcLevelFromXp(xp){
       xp = Math.max(0, Number(xp||0));
       const L = Math.floor((Math.sqrt(1 + 0.08 * xp) - 1) / 2);
@@ -286,7 +274,6 @@
       return m;
     }
 
-    // ✅ 경험치 지급표
     function xpByMatch(m){
       if(m===3) return 1000;
       if(m===2) return 500;
@@ -296,9 +283,7 @@
 
     function safeStr(v){ return String(v ?? "").trim(); }
 
-    // ✅ 티켓 필드 호환:
-    // - 신규: lotteryCount
-    // - 구버전: lottoTickets
+    // 신규: lotteryCount / 구버전: lottoTickets
     function getTicketsFromUserDoc(data){
       const a = data?.lotteryCount;
       const b = data?.lottoTickets;
@@ -306,7 +291,7 @@
       return Math.max(0, Number(v || 0));
     }
 
-    // ✅ users + publicUsers 준비 (+ ticket 필드 기본값 보장)
+    // ✅ role은 규칙에 따라 막히는 경우가 많아서: 여기서는 생성/패치 시 role을 "쓰기"하지 않음
     async function ensureUserDoc(user){
       const userRef = doc(db, "users", user.uid);
       const pubRef  = doc(db, "publicUsers", user.uid);
@@ -325,14 +310,10 @@
           uid: user.uid,
           email: user.email || null,
           nickname: nickGuess,
-          role: "user",
           xp: 0,
           level: 1,
-
-          // ✅ 티켓(복권) 수량: 신규 필드 + 구버전 필드 둘 다 유지
           lotteryCount: 0,
           lottoTickets: 0,
-
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         }, { merge: true });
@@ -354,7 +335,6 @@
       if(data.xp === undefined) patch.xp = 0;
       if(data.level === undefined) patch.level = calcLevelFromXp(data.xp ?? 0);
 
-      // ✅ 티켓 필드: lotteryCount가 없으면 만들고, 구버전 lottoTickets가 있으면 그 값을 이관
       if(data.lotteryCount === undefined){
         if(data.lottoTickets !== undefined){
           patch.lotteryCount = Math.max(0, Number(data.lottoTickets || 0));
@@ -369,7 +349,6 @@
       const normalizedNick = normNick(data.nickname || (user.email ? user.email.split("@")[0] : "사용자"));
       const nickErr = validateNickForDocId(normalizedNick);
       if(nickErr) throw new Error("닉네임 오류: " + nickErr);
-
       if((data.nickname || "") !== normalizedNick) patch.nickname = normalizedNick;
 
       if(Object.keys(patch).length){
@@ -377,7 +356,6 @@
         await setDoc(userRef, patch, { merge: true });
       }
 
-      // publicUsers 동기화(랭킹용)
       const xp = Number((data.xp ?? patch.xp) ?? 0);
       const level = Number((data.level ?? patch.level) ?? calcLevelFromXp(xp));
 
@@ -392,7 +370,6 @@
       return { userRef, pubRef };
     }
 
-    // ✅ 내 정보 UI 업데이트(스냅샷에서 호출)
     let IS_ADMIN = false;
     function applyMeUIFromUserDoc(userDocData){
       const nick = normNick(userDocData.nickname || "-");
@@ -416,7 +393,6 @@
       syncTicketUI();
     }
 
-    // ✅ 실시간 구독(관리자 +/- 즉시 반영)
     let unsubscribeMe = null;
     function subscribeMe(userRef){
       if(unsubscribeMe) unsubscribeMe();
@@ -452,7 +428,8 @@
       });
     }
 
-    // ✅ 공통: 1회 실행(트랜잭션 포함)
+    // ✅ (핵심 수정) 트랜잭션에서는 users/publicUsers만 처리
+    // ✅ 로그는 트랜잭션 밖에서 users/{uid}/lottoPlays 에 저장 시도 (실패해도 게임 진행 OK)
     async function playOnce(user){
       const picked = [Number(d1.value), Number(d2.value), Number(d3.value)];
       const drawn = randomDigits3();
@@ -461,6 +438,10 @@
 
       const userRef = doc(db, "users", user.uid);
       const pubRef  = doc(db, "publicUsers", user.uid);
+
+      let nickForLog = "사용자";
+      let newXpForLog = 0;
+      let newLevelForLog = 1;
 
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(userRef);
@@ -480,13 +461,15 @@
         const newXp = oldXp + earned;
         const newLevel = calcLevelFromXp(newXp);
 
-        // ✅ 티켓 감소: 신규/구버전 필드 둘 다 같이 업데이트(호환 유지)
+        nickForLog = nick;
+        newXpForLog = newXp;
+        newLevelForLog = newLevel;
+
         tx.update(userRef, {
           lotteryCount: tickets - 1,
           lottoTickets: tickets - 1,
           xp: newXp,
           level: newLevel,
-          nickname: nick,
           updatedAt: serverTimestamp()
         });
 
@@ -497,18 +480,24 @@
           level: newLevel,
           updatedAt: serverTimestamp()
         }, { merge: true });
+      });
 
-        const playRef = doc(collection(db, "lottoPlays"));
-        tx.set(playRef, {
+      // ✅ 로그 저장(권한 없으면 무시)
+      // - 공개 컬렉션 lottoPlays 대신, 보통 규칙에서 허용하기 쉬운 "유저 하위 서브컬렉션" 사용
+      try{
+        const logCol = collection(db, "users", user.uid, "lottoPlays");
+        await addDoc(logCol, {
           uid: user.uid,
-          nickname: nick,
+          nickname: nickForLog,
           picked,
           drawn,
           matchCount: m,
           xpEarned: earned,
           createdAt: serverTimestamp()
         });
-      });
+      }catch(_e){
+        // 로그가 막혀도 게임 진행은 정상이어야 하므로 무시
+      }
 
       return { picked, drawn, m, earned };
     }
@@ -538,7 +527,6 @@
       try{
         const r = await playOnce(user);
 
-        // ✅ 로컬 표시도 즉시 감소(스냅샷이 곧 반영해주지만 체감 빠르게)
         myTickets = Math.max(0, (myTickets||0) - 1);
         syncTicketUI();
 
@@ -618,17 +606,14 @@
 
       clearErr();
       try{
-        // ✅ 문서 보정 + 실시간 구독 시작
         const { userRef } = await ensureUserDoc(user);
         subscribeMe(userRef);
 
-        // 랭킹 1회 로드
         await loadRanking();
 
         playBtn.onclick = () => playLottoOnce(user);
         autoBtn.onclick = () => playLottoAuto(user);
 
-        // 페이지 떠날 때 구독 정리(안전)
         window.addEventListener("beforeunload", ()=>{ if(unsubscribeMe) unsubscribeMe(); });
 
       }catch(e){
